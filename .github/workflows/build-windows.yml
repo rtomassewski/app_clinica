@@ -1,0 +1,46 @@
+name: Compilar Instalador Windows
+
+# Este 'robô' só é ativado quando você cria uma 'tag' no Git
+# (ex: git tag v1.0.1)
+on:
+  push:
+    tags:
+      - 'v*.*.*' # Ex: v1.0.0, v1.0.1, etc.
+
+jobs:
+  build-windows:
+    # 1. Diz ao GitHub para usar uma máquina Windows
+    runs-on: windows-latest
+
+    steps:
+      # 2. Descarrega o seu código (o projeto Flutter)
+      - name: Checkout (Descarregar código)
+        uses: actions/checkout@v4
+
+      # 3. Instala o Inno Setup na máquina Windows
+      - name: Setup Inno Setup
+        uses: amake/inno-setup-action@v1
+
+      # 4. Instala o Flutter na máquina Windows
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      # 5. Compila o App Flutter para Windows
+      - name: Build Flutter (Windows)
+        run: |
+          flutter pub get
+          flutter build windows --release
+
+      # 6. Compila o Instalador (Executa o seu script .iss)
+      - name: Build Installer (Inno Setup)
+        run: |
+          iscc "installer\windows\thomasmedsoft.iss"
+      
+      # 7. Faz o Upload do .exe final como um 'Artefacto'
+      - name: Upload Installer Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ThomasMedSoft-Instalador
+          path: build\windows\installer\ThomasMedSoft-Instalador-v1.0.0.exe

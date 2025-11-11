@@ -19,7 +19,7 @@ jobs:
 
       # 3. Instala o Inno Setup na máquina Windows
       - name: Setup Inno Setup
-        uses: amake/inno-setup-action@v1
+        uses: Minishlink/inno-setup-action@v1
 
       # 4. Instala o Flutter na máquina Windows
       - name: Setup Flutter

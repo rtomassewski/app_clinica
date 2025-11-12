@@ -143,4 +143,74 @@ class AuthService extends ChangeNotifier {
   }) async {
     // ... (código existente)
   }
+  // POST /auth/register-trial
+  Future<void> registerTrial({
+    required String nomeFantasia,
+    required String cnpj,
+    required String nomeAdmin,
+    required String emailAdmin,
+    required String senhaAdmin,
+  }) async {
+    final url = Uri.parse('$baseUrl/auth/register-trial');
+    
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json; charset=UTF-8'},
+        body: json.encode({
+          'nome_fantasia': nomeFantasia,
+          'cnpj': cnpj,
+          'nome_admin': nomeAdmin,
+          'email_admin': emailAdmin,
+          'senha_admin': senhaAdmin,
+        }),
+      );
+
+      // 409 (Conflito: E-mail ou CNPJ já existe)
+      if (response.statusCode == 409) {
+        final body = json.decode(response.body);
+        throw Exception(body['message'] ?? 'E-mail ou CNPJ já está em uso.');
+      }
+      
+      // 400 (Bad Request: ex: CNPJ com 13 dígitos, senha < 6)
+      if (response.statusCode == 400) {
+        final body = json.decode(response.body);
+        // Pega a primeira mensagem de erro da validação
+        throw Exception(body['message'][0] ?? 'Dados inválidos.');
+      }
+      
+      // 500 (Erro de servidor)
+      if (response.statusCode != 201) {
+        throw Exception('Falha ao criar a conta de teste.');
+      }
+
+      // 201 (Sucesso!)
+      // O back-end devolve a mesma resposta que o /login.
+      // Vamos processá-la e fazer o login automático.
+      final data = json.decode(response.body);
+      final token = data['access_token'];
+      final usuarioData = data['usuario'];
+      
+      _userName = usuarioData['nome'];
+      _papelId = usuarioData['papelId'];
+      _clinicaId = usuarioData['clinicaId'];
+      
+      final licencaData = usuarioData['licenca'];
+      _licencaStatus = _parseStatus(licencaData?['status']);
+      _licencaPlano = _parsePlano(licencaData?['plano']);
+      
+      final clinicaData = usuarioData['clinica'];
+      if (clinicaData != null) {
+        _clinicaConfig = ClinicaConfig.fromUsuarioLogin(clinicaData);
+      }
+      
+      await _storage.write(key: 'access_token', value: token);
+      _isAuthenticated = true;
+      notifyListeners(); // <-- Isto fará o app navegar automaticamente!
+      
+    } catch (e) {
+      // Relança o erro para o widget da UI (o formulário)
+      throw Exception('Erro no registo: $e');
+    }
+  }
 }

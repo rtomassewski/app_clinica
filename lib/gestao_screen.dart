@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'gestao_service.dart';
 import 'gestao_edit_screen.dart';
+
 class GestaoScreen extends StatefulWidget {
   const GestaoScreen({Key? key}) : super(key: key);
 
@@ -13,9 +14,7 @@ class GestaoScreen extends StatefulWidget {
 class _GestaoScreenState extends State<GestaoScreen> {
   late Future<List<UsuarioLista>> _usuariosFuture;
 
-  // 1. (NOVO) Nossos papéis "hardcoded"
-  // Lembre-se: 1=ADMINISTRADOR, 2=MEDICO, 3=PSICOLOGO, etc.
-  // (Baseado no 'seed' do back-end)
+  // Lista de papéis (hardcoded, baseada no 'seed' do back-end)
   final List<Papel> _papeisDisponiveis = [
     Papel(id: 1, nome: 'Administrador'),
     Papel(id: 2, nome: 'Médico'),
@@ -40,14 +39,17 @@ class _GestaoScreenState extends State<GestaoScreen> {
     });
   }
 
-  // --- SUBSTITUA ESTA FUNÇÃO ---
-  // 2. (NOVO) O modal completo
+  // --- O Modal de Adicionar (COM O CAMPO DE REGISTRO CORRIGIDO) ---
   Future<void> _showAddUsuarioDialog() async {
     final _formKey = GlobalKey<FormState>();
     final _nomeController = TextEditingController();
     final _emailController = TextEditingController();
     final _senhaController = TextEditingController();
-    Papel? _papelSelecionado; // Para o dropdown
+    
+    // 1. Controller que faltava (do Passo 2.2)
+    final _registroController = TextEditingController(); 
+    
+    Papel? _papelSelecionado;
     bool _isSaving = false;
 
     return showDialog<void>(
@@ -58,9 +60,9 @@ class _GestaoScreenState extends State<GestaoScreen> {
           builder: (context, setModalState) {
             return AlertDialog(
               title: const Text('Adicionar Novo Usuário'),
-              content: SingleChildScrollView(
-                child: Form(
-                  key: _formKey,
+              content: Form( // (O SingleChildScrollView foi movido para dentro do Form)
+                key: _formKey,
+                child: SingleChildScrollView(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -102,6 +104,15 @@ class _GestaoScreenState extends State<GestaoScreen> {
                         validator: (value) =>
                             value == null ? 'Obrigatório' : null,
                       ),
+                      
+                      // --- 2. O TextFormField que faltava (CORRIGIDO) ---
+                      TextFormField(
+                        controller: _registroController,
+                        decoration: const InputDecoration(
+                          labelText: 'CRM / COREN (Opcional)',
+                        ),
+                      ),
+                      // --- FIM DA CORREÇÃO ---
                     ],
                   ),
                 ),
@@ -126,6 +137,11 @@ class _GestaoScreenState extends State<GestaoScreen> {
                                 email: _emailController.text,
                                 senha: _senhaController.text,
                                 papelId: _papelSelecionado!.id,
+                                
+                                // --- 3. O Parâmetro que faltava (CORRIGIDO) ---
+                                registroConselho: _registroController.text.isEmpty
+                                    ? null
+                                    : _registroController.text,
                               );
 
                               Navigator.of(context).pop(); // Fecha o modal
@@ -154,6 +170,8 @@ class _GestaoScreenState extends State<GestaoScreen> {
       },
     );
   }
+  
+  // (A função de navegar para editar não muda)
   Future<void> _navegarParaEditar(UsuarioLista usuario) async {
     final resultado = await Navigator.push(
       context,
@@ -165,7 +183,6 @@ class _GestaoScreenState extends State<GestaoScreen> {
       ),
     );
     
-    // Se a tela de edição retornou 'true', atualize a lista
     if (resultado == true) {
       _refreshUsuarios();
     }
@@ -180,7 +197,6 @@ class _GestaoScreenState extends State<GestaoScreen> {
       body: FutureBuilder<List<UsuarioLista>>(
         future: _usuariosFuture,
         builder: (context, snapshot) {
-          // ... (o builder do FutureBuilder não muda)
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
@@ -214,7 +230,7 @@ class _GestaoScreenState extends State<GestaoScreen> {
         },
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _showAddUsuarioDialog, // Agora chama o modal real
+        onPressed: _showAddUsuarioDialog,
         child: const Icon(Icons.add),
         tooltip: 'Novo Usuário',
       ),

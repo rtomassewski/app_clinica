@@ -66,6 +66,7 @@ class GestaoService {
     required String email,
     required String senha,
     required int papelId,
+    String? registroConselho,
   }) async {
     final token = await _authService.getToken();
     if (token == null) throw Exception('Não autenticado');
@@ -86,6 +87,7 @@ class GestaoService {
         'senha': senha,
         'papelId': papelId,
         'clinicaId': clinicaId,
+        'registro_conselho': registroConselho,
       }),
       
     );

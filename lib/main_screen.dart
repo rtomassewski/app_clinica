@@ -39,38 +39,28 @@ class _MainScreenState extends State<MainScreen> {
     _telas.clear();
     _abas.clear();
 
-    // --- LÓGICA DE LICENÇA E PERMISSÃO ---
-    
-    // 1. Define o plano do utilizador
-    // (O plano TESTE dá acesso a tudo, como o GESTAO/ENTERPRISE)
-    bool temPlanoPremium = 
-        authService.licencaPlano == TipoPlano.GESTAO ||
-        authService.licencaPlano == TipoPlano.ENTERPRISE ||
-        authService.licencaPlano == TipoPlano.TESTE;
-
-    // 2. GESTOR (Admin/Coordenador)
-    if (authService.isGestor) {
+    // 1. LÓGICA PARA ADMIN (Acesso Total)
+    if (authService.isAdmin) {
       
-      // Só mostra o Dashboard se for Premium
+      // Verifica se a licença permite os módulos Premium
+      bool temPlanoPremium = 
+          authService.licencaPlano == TipoPlano.GESTAO ||
+          authService.licencaPlano == TipoPlano.ENTERPRISE ||
+          authService.licencaPlano == TipoPlano.TESTE;
+
       if (temPlanoPremium) {
         _telas.add(const DashboardScreen());
         _abas.add(const BottomNavigationBarItem(
           icon: Icon(Icons.dashboard),
           label: 'Dashboard',
         ));
-      }
-      
-      // Só mostra o Financeiro se for Premium
-      if (temPlanoPremium) {
+        
         _telas.add(const FinanceiroScreen());
         _abas.add(const BottomNavigationBarItem(
           icon: Icon(Icons.monetization_on),
           label: 'Financeiro',
         ));
-      }
-      
-      // Só mostra o Estoque se for Premium
-      if (temPlanoPremium) {
+        
         _telas.add(const EstoqueScreen());
         _abas.add(const BottomNavigationBarItem(
           icon: Icon(Icons.inventory_2_outlined),
@@ -79,7 +69,7 @@ class _MainScreenState extends State<MainScreen> {
       }
     }
 
-    // 3. ENFERMAGEM (Enfermeiro/Técnico)
+    // 2. ENFERMAGEM (Enfermeiro/Técnico)
     if (authService.isEnfermagem) {
       _telas.add(const EnfermagemScreen());
       _abas.add(const BottomNavigationBarItem(
@@ -88,19 +78,24 @@ class _MainScreenState extends State<MainScreen> {
       ));
     }
     
-    // 4. Abas Padrão (Todos veem)
+    // 3. ABAS PADRÃO (Todos veem: Admin, Médico, Coordenador, etc.)
+    // O Coordenador cairá apenas aqui.
+    
     _telas.add(const HomeScreen());
     _abas.add(const BottomNavigationBarItem(
       icon: Icon(Icons.people),
       label: 'Pacientes',
     ));
+
+    // (Opcional: Se o Coordenador também precisar ver a Agenda, deixe isto.
+    // Se não, envolva num 'if (!authService.isCoordenador)' )
     _telas.add(const AgendaScreen());
     _abas.add(const BottomNavigationBarItem(
       icon: Icon(Icons.calendar_today),
       label: 'Agenda',
     ));
 
-    // 5. Abas de ADMIN (Admin)
+    // 4. ABAS EXCLUSIVAS DE ADMIN
     if (authService.isAdmin) {
       _telas.add(const InternacaoScreen());
       _abas.add(const BottomNavigationBarItem(

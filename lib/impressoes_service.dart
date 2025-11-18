@@ -35,4 +35,33 @@ class ImpressoesService {
       throw Exception('Erro de conexão: $e');
     }
   }
+  Future<Uint8List> gerarRelatorioFinanceiro({DateTime? inicio, DateTime? fim}) async {
+    final token = await _authService.getToken();
+    if (token == null) throw Exception('Não autenticado');
+
+    // Monta a URL com Query Params
+    String queryString = '';
+    if (inicio != null && fim != null) {
+      queryString = '?inicio=${inicio.toIso8601String()}&fim=${fim.toIso8601String()}';
+    }
+
+    final url = Uri.parse('$baseUrl/impressoes/financeiro$queryString');
+
+    try {
+      final response = await http.get(
+        url,
+        headers: {
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        return response.bodyBytes;
+      } else {
+        throw Exception('Falha ao gerar relatório financeiro. Status: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Erro de conexão: $e');
+    }
+  }
 }

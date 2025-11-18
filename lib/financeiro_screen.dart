@@ -2,10 +2,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
-
+import 'impressoes_service.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:open_file/open_file.dart';
+import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb; // Para checar se é web
 import 'financeiro_service.dart';
-import 'paciente_service.dart'; // Para a lista de pacientes
-import 'gestao_service.dart'; // Para o modelo 'Papel' (apenas para o tipo)
+import 'paciente_service.dart'; 
+import 'gestao_service.dart'; 
 import 'categorias_screen.dart';
 
 class FinanceiroScreen extends StatefulWidget {
@@ -34,29 +38,26 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
 
   // --- O MODAL DE ADICIONAR TRANSAÇÃO ---
   Future<void> _showAddTransacaoDialog() async {
-    // Controladores do formulário
     final _formKey = GlobalKey<FormState>();
     final _descController = TextEditingController();
     final _valorController = TextEditingController();
-    String _tipoSelecionado = 'DESPESA'; // Padrão
+    String _tipoSelecionado = 'DESPESA';
     CategoriaFinanceira? _catSelecionada;
-    Paciente? _pacienteSelecionado; // Opcional
+    Paciente? _pacienteSelecionado;
     DateTime _dataVenc = DateTime.now();
 
-    // Dados para os dropdowns (buscados da API)
     List<CategoriaFinanceira> _categorias = [];
     List<Paciente> _pacientes = [];
     String? _erroLoading;
     bool _isLoadingDados = true;
 
-    // Busca os dados para os dropdowns
     Future<void> _loadModalData() async {
       try {
         final financeiroService = Provider.of<FinanceiroService>(context, listen: false);
         final pacienteService = Provider.of<PacienteService>(context, listen: false);
         
         final catFuture = financeiroService.getCategorias();
-        final pacFuture = pacienteService.getPacientes(); // (Este 'getPacientes' não está filtrado, mas serve)
+        final pacFuture = pacienteService.getPacientes();
 
         _categorias = await catFuture;
         _pacientes = await pacFuture;
@@ -73,7 +74,6 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
         return StatefulBuilder(
           builder: (context, setModalState) {
             
-            // Carrega os dados na primeira vez
             if (_isLoadingDados) {
               _loadModalData().then((_) {
                 setModalState(() {
@@ -82,7 +82,6 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
               });
             }
 
-            // Filtra as categorias baseado no Tipo (Receita/Despesa)
             final categoriasFiltradas = _categorias
                 .where((c) => c.tipo == _tipoSelecionado)
                 .toList();
@@ -99,7 +98,6 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
                             child: Column(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                // Seletor de Tipo
                                 DropdownButtonFormField<String>(
                                   value: _tipoSelecionado,
                                   items: const [
@@ -109,7 +107,7 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
                                   onChanged: (value) {
                                     setModalState(() {
                                       _tipoSelecionado = value!;
-                                      _catSelecionada = null; // Reseta a categoria
+                                      _catSelecionada = null;
                                     });
                                   },
                                 ),
@@ -124,7 +122,6 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
                                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
                                   validator: (v) => (double.tryParse(v ?? '0') ?? 0) <= 0 ? 'Inválido' : null,
                                 ),
-                                // Dropdown de Categorias (filtrado)
                                 DropdownButtonFormField<CategoriaFinanceira>(
                                   value: _catSelecionada,
                                   hint: const Text('Categoria*'),
@@ -134,7 +131,6 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
                                   onChanged: (value) => setModalState(() => _catSelecionada = value),
                                   validator: (v) => v == null ? 'Obrigatório' : null,
                                 ),
-                                // Dropdown de Pacientes (Opcional, só para Receitas)
                                 if (_tipoSelecionado == 'RECEITA')
                                   DropdownButtonFormField<Paciente>(
                                     value: _pacienteSelecionado,
@@ -159,7 +155,7 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
                           descricao: _descController.text,
                           valor: double.parse(_valorController.text),
                           tipo: _tipoSelecionado,
-                          dataVencimento: _dataVenc, // (Usando 'agora', TODO: Adicionar DatePicker)
+                          dataVencimento: _dataVenc,
                           categoriaId: _catSelecionada!.id,
                           pacienteId: _pacienteSelecionado?.id,
                         );
@@ -185,7 +181,6 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
   // --- MODAL DE MARCAR COMO PAGO ---
   Future<void> _showMarcarComoPagoDialog(TransacaoFinanceira transacao) async {
     if (transacao.dataPagamento != null) {
-      // Já está pago
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Esta transação já foi paga.')));
       return;
     }
@@ -222,13 +217,19 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
       appBar: AppBar(
         title: const Text('Financeiro (Caixa)'),
         
-        // --- O BLOCO 'actions' FOI MOVIDO PARA CÁ ---
+        // --- BOTÕES DO APPBAR ---
         actions: [
+          // 1. Botão de Exportar Relatório (NOVO)
+          IconButton(
+            icon: const Icon(Icons.picture_as_pdf),
+            tooltip: 'Exportar Relatório',
+            onPressed: _exportarRelatorio,
+          ),
+          // 2. Botão de Gerenciar Categorias
           IconButton(
             icon: const Icon(Icons.category_outlined),
             tooltip: 'Gerenciar Categorias',
             onPressed: () {
-              // 3. Navega para a nova tela
               Navigator.push(
                 context,
                 MaterialPageRoute(
@@ -238,8 +239,8 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
             },
           ),
         ],
-        // --- FIM DA CORREÇÃO ---
-      ), // <-- O AppBar agora fecha aqui
+        // --- FIM DOS BOTÕES ---
+      ),
       
       body: FutureBuilder<List<TransacaoFinanceira>>(
         future: _transacoesFuture,
@@ -312,5 +313,65 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
         tooltip: 'Novo Lançamento',
       ),
     );
+  }
+
+  // --- MÉTODO DE EXPORTAÇÃO (Chamado pelo botão no AppBar) ---
+  Future<void> _exportarRelatorio() async {
+    // Se estiver na web, mostra aviso (pois o path_provider não funciona igual)
+    if (kIsWeb) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Exportação de PDF indisponível na versão Web.')),
+      );
+      return;
+    }
+
+    // 1. Seleciona o intervalo de datas
+    final DateTimeRange? picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+      initialDateRange: DateTimeRange(
+        start: DateTime.now().subtract(const Duration(days: 30)),
+        end: DateTime.now(),
+      ),
+      helpText: 'Selecione o Período do Relatório',
+    );
+
+    if (picked == null) return;
+
+    // 2. Mostra Loading
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      // 3. Chama o serviço
+      final impressoesService = Provider.of<ImpressoesService>(context, listen: false);
+      final pdfBytes = await impressoesService.gerarRelatorioFinanceiro(
+        inicio: picked.start,
+        fim: picked.end,
+      );
+
+      Navigator.of(context).pop(); // Fecha Loading
+
+      // 4. Salva e Abre (Lógica NATIVA - Windows/Android)
+      final tempDir = await getTemporaryDirectory();
+      final filePath = '${tempDir.path}/relatorio_financeiro.pdf';
+      final file = File(filePath);
+      await file.writeAsBytes(pdfBytes);
+      await OpenFile.open(filePath);
+
+    } catch (e) {
+      // Fecha o loading se ainda estiver aberto e der erro
+      if (mounted && Navigator.canPop(context)) {
+         Navigator.of(context).pop(); 
+      }
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red),
+      );
+    }
   }
 }

@@ -17,6 +17,8 @@ import 'financeiro_service.dart';
 import 'estoque_service.dart';
 import 'impressoes_service.dart';
 import 'configuracao_service.dart';
+import 'agenda_service.dart'; // 1. Garanta que este import está aqui
+import 'gestao_service.dart';
 
 void main() async { // 2. TRANSFORME EM 'async'
   // 3. GARANTA QUE O FLUTTER ESTEJA INICIALIZADO
@@ -30,6 +32,9 @@ void main() async { // 2. TRANSFORME EM 'async'
       providers: [
         ChangeNotifierProvider(
           create: (context) => AuthService(),
+        ),
+        ProxyProvider<AuthService, AgendaService>(
+          update: (context, auth, previous) => AgendaService(auth), // <-- ESTA LINHA ESTAVA A FALTAR
         ),
         ProxyProvider<AuthService, PacienteService>(
           update: (context, auth, previous) => PacienteService(auth),

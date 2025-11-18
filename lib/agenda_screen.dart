@@ -7,6 +7,9 @@ import 'paciente_service.dart' hide Agendamento;
 import 'agenda_service.dart';
 import 'auth_service.dart';
 
+// Este código assume que você também adicionou um TextField para 'Observacao'
+// no modal de criação.
+
 class AgendaScreen extends StatefulWidget {
   const AgendaScreen({Key? key}) : super(key: key);
 
@@ -22,8 +25,8 @@ class _AgendaScreenState extends State<AgendaScreen> {
 
   // Serviços e dados
   late PacienteService _pacienteService;
-  late AgendaService _agendaService; // Use AgendaService para os métodos de agendamento
-  late AuthService _authService; // Para permissões
+  late AgendaService _agendaService; 
+  late AuthService _authService; 
 
   late Future<List<Agendamento>> _agendamentosFuture;
   
@@ -37,19 +40,17 @@ class _AgendaScreenState extends State<AgendaScreen> {
     super.initState();
     _selectedDay = _focusedDay;
     _pacienteService = Provider.of<PacienteService>(context, listen: false);
-    _agendaService = Provider.of<AgendaService>(context, listen: false); // Inicializar AgendaService
-    _authService = Provider.of<AuthService>(context, listen: false); // Inicializar AuthService
+    _agendaService = Provider.of<AgendaService>(context, listen: false); 
+    _authService = Provider.of<AuthService>(context, listen: false); 
     
-    _fetchAgendamentos(_selectedDay!);
+    _fetchAgendamentos(_selectedDay ?? DateTime.now());
     _fetchDropdownData();
   }
 
   // Busca agendamentos 
   void _fetchAgendamentos(DateTime dia) {
-    // Certifique-se de que a data está correta (00:00:00)
     final dataInicio = DateTime(dia.year, dia.month, dia.day);
     setState(() {
-      // Usar o método correto do AgendaService para listar
       _agendamentosFuture = _agendaService.getAgendamentos(date: dataInicio);
     });
   }
@@ -57,13 +58,7 @@ class _AgendaScreenState extends State<AgendaScreen> {
   // Busca dados para os modais
   Future<void> _fetchDropdownData() async {
     try {
-      // Usar o PacienteService (que contém o modelo Paciente) e GestaoService (para Profissionais)
       final pacientes = await _pacienteService.getPacientes();
-      
-      // NOTA: Os Profissionais foram movidos para o GestaoService em passos anteriores. 
-      // Para manter a compilação, vamos assumir que o PacienteService ainda os tem, 
-      // OU que o GestaoService foi injetado (o que não foi).
-      // Para simplificar, vamos assumir que o PacienteService ainda tem os métodos.
       final profissionais = await _pacienteService.getProfissionais(); 
 
       setState(() {
@@ -72,7 +67,11 @@ class _AgendaScreenState extends State<AgendaScreen> {
         _isLoadingDropdowns = false;
       });
     } catch (e) {
-       // Em um app real, o erro de carregamento deve ser exibido.
+       if(mounted) {
+         setState(() {
+           _isLoadingDropdowns = false;
+         });
+       }
     }
   }
 
@@ -86,15 +85,22 @@ class _AgendaScreenState extends State<AgendaScreen> {
     }
   }
 
-  // --- Modal para Criar Novo Agendamento (sem alterações) ---
+  // --- Modal para Criar Novo Agendamento (CORRIGIDO ERRO 400) ---
   Future<void> _showAddAgendamentoDialog() async {
     if (_isLoadingDropdowns) return;
 
     Paciente? _pacienteSelecionado;
     Profissional? _profissionalSelecionado;
     DateTime _dataHoraInicio = _selectedDay ?? DateTime.now();
+    
+    // Define a hora padrão para 9:00 no dia selecionado, se a hora for 00:00
+    if (_selectedDay != null && _dataHoraInicio.hour == 0 && _dataHoraInicio.minute == 0) {
+      _dataHoraInicio = DateTime(_selectedDay!.year, _selectedDay!.month, _selectedDay!.day, 9, 0);
+    }
+    
     TimeOfDay _horaInicio = TimeOfDay.fromDateTime(_dataHoraInicio);
-    Duration _duracao = const Duration(hours: 1); // Duração padrão de 1h
+    
+    TextEditingController _obsController = TextEditingController(); // Para o campo de observação
 
     final _formKey = GlobalKey<FormState>();
     bool _isSaving = false;
@@ -174,6 +180,15 @@ class _AgendaScreenState extends State<AgendaScreen> {
                       
                       const SizedBox(height: 16),
                       
+                      // Campo de Observação
+                      TextFormField(
+                        controller: _obsController,
+                        decoration: const InputDecoration(labelText: 'Observação (Opcional)'),
+                        maxLines: 2,
+                      ),
+
+                      const SizedBox(height: 16),
+                      
                       // Seletores de Data e Hora
                       Text('Data: ${DateFormat('dd/MM/yyyy').format(_dataHoraInicio)}'),
                       ElevatedButton(onPressed: () => _selecionarData(context), child: const Text('Mudar Data')),
@@ -192,23 +207,23 @@ class _AgendaScreenState extends State<AgendaScreen> {
                       setModalState(() => _isSaving = true);
                       
                       try {
-                        // Chama a API
+                        // CORREÇÃO DO ERRO 400: Renomear os campos para o DTO do Back-End
                         await _agendaService.addAgendamento(
                           pacienteId: _pacienteSelecionado!.id,
-                          prestadorId: _profissionalSelecionado!.id, // Corrigido o nome
-                          dataHora: _dataHoraInicio.toIso8601String(), // Corrigido o nome
-                          // dataHoraFim não é necessário no DTO
+                          usuarioId: _profissionalSelecionado!.id, // Renomeado para 'usuarioId'
+                          data_hora_inicio: _dataHoraInicio.toIso8601String(), // Renomeado para 'data_hora_inicio'
+                          observacao: _obsController.text.isNotEmpty ? _obsController.text : null, 
                         );
                         
-                        Navigator.of(context).pop(); // Fecha o modal
-                        _fetchAgendamentos(_selectedDay!); // Atualiza a agenda
+                        Navigator.of(context).pop(); 
+                        _fetchAgendamentos(_selectedDay!); 
 
                       } catch (e) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red),
+                          SnackBar(content: Text('Erro ao salvar: ${e.toString()}'), backgroundColor: Colors.red),
                         );
                       } finally {
-                        setModalState(() => _isSaving = false);
+                        if(mounted) setModalState(() => _isSaving = false);
                       }
                     }
                   },
@@ -222,15 +237,16 @@ class _AgendaScreenState extends State<AgendaScreen> {
     );
   }
 
-  // --- Modal de Edição (CORRIGIDO) ---
+  // --- Modal de Edição (Corrigido para incluir Observação) ---
   Future<void> _showEditAgendamentoDialog(Agendamento agendamento) async {
-    // Define quem pode editar: Admin, Coordenador, Atendente
     final podeEditar = _authService.isAdmin || _authService.isGestor || _authService.isAtendente;
     
     if (!podeEditar) return; 
 
     StatusAtendimento? novoStatus = agendamento.status;
     DateTime novaDataHora = agendamento.dataHora; 
+    
+    TextEditingController obsController = TextEditingController(text: agendamento.observacao);
 
     await showDialog<void>(
       context: context,
@@ -263,6 +279,15 @@ class _AgendaScreenState extends State<AgendaScreen> {
                         setModalState(() => novoStatus = value);
                       },
                     ),
+                    const SizedBox(height: 15),
+
+                    // Campo de Observação
+                    TextFormField(
+                      controller: obsController,
+                      decoration: const InputDecoration(labelText: 'Observação'),
+                      maxLines: 2,
+                    ),
+                    
                     const SizedBox(height: 20),
 
                     // Seletor de Data e Hora
@@ -318,8 +343,9 @@ class _AgendaScreenState extends State<AgendaScreen> {
                     try {
                       final statusMudou = agendamento.status != novoStatus;
                       final dataHoraMudou = agendamento.dataHora.difference(novaDataHora).inMinutes.abs() > 1; 
-                      
-                      if (!statusMudou && !dataHoraMudou) {
+                      final observacaoMudou = agendamento.observacao != obsController.text;
+
+                      if (!statusMudou && !dataHoraMudou && !observacaoMudou) {
                          Navigator.of(context).pop();
                          return;
                       }
@@ -328,6 +354,7 @@ class _AgendaScreenState extends State<AgendaScreen> {
                         agendamentoId: agendamento.id,
                         novoStatus: novoStatus,
                         novaDataHora: dataHoraMudou ? novaDataHora.toIso8601String() : null,
+                        observacao: obsController.text,
                       );
                       
                       Navigator.of(context).pop();
@@ -350,9 +377,13 @@ class _AgendaScreenState extends State<AgendaScreen> {
     );
   }
 
-  // --- MÉTODO AUXILIAR PARA O CARD (A parte que faltava no ficheiro do usuário) ---
+
+  // --- MÉTODO AUXILIAR PARA O CARD (CORRIGIDO TYPE ERROR: NULL) ---
   Widget _buildAgendamentoCard(Agendamento agendamento) {
     final podeEditar = _authService.isAdmin || _authService.isGestor || _authService.isAtendente;
+    
+    // CORREÇÃO: Garante que o título nunca é null, evitando o TypeError
+    final pacienteNome = agendamento.pacienteNome ?? 'Paciente Desconhecido';
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -368,7 +399,8 @@ class _AgendaScreenState extends State<AgendaScreen> {
           ),
         ),
         
-        title: Text(agendamento.pacienteNome),
+        // Usa o nome seguro
+        title: Text(pacienteNome),
         
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -404,23 +436,26 @@ class _AgendaScreenState extends State<AgendaScreen> {
       ),
       body: Column(
         children: [
-          // O Calendário
-          TableCalendar(
-            locale: 'pt_BR',
-            firstDay: DateTime.utc(2020, 1, 1),
-            lastDay: DateTime.utc(2030, 12, 31),
-            focusedDay: _focusedDay,
-            calendarFormat: _calendarFormat,
-            selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
-            onDaySelected: _onDaySelected,
-            onFormatChanged: (format) {
-              if (_calendarFormat != format) {
-                setState(() => _calendarFormat = format);
-              }
-            },
-            onPageChanged: (focusedDay) {
-              _focusedDay = focusedDay;
-            },
+          // O Calendário (Com Altura Fixa - para evitar problemas de layout)
+          SizedBox( 
+            height: 350, 
+            child: TableCalendar(
+              locale: 'pt_BR',
+              firstDay: DateTime.utc(2020, 1, 1),
+              lastDay: DateTime.utc(2030, 12, 31),
+              focusedDay: _focusedDay,
+              calendarFormat: _calendarFormat,
+              selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
+              onDaySelected: _onDaySelected,
+              onFormatChanged: (format) {
+                if (_calendarFormat != format) {
+                  setState(() => _calendarFormat = format);
+                }
+              },
+              onPageChanged: (focusedDay) {
+                _focusedDay = focusedDay;
+              },
+            ),
           ),
           
           const Divider(),
@@ -445,7 +480,6 @@ class _AgendaScreenState extends State<AgendaScreen> {
                   itemCount: agendamentos.length,
                   itemBuilder: (context, index) {
                     final agendamento = agendamentos[index];
-                    // Usa o método auxiliar corrigido
                     return _buildAgendamentoCard(agendamento);
                   },
                 );
@@ -455,7 +489,7 @@ class _AgendaScreenState extends State<AgendaScreen> {
         ],
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _isLoadingDropdowns ? null : _showAddAgendamentoDialog, // Desabilita se os dados não carregaram
+        onPressed: _isLoadingDropdowns ? null : _showAddAgendamentoDialog, 
         child: const Icon(Icons.add),
         tooltip: 'Novo Agendamento',
       ),

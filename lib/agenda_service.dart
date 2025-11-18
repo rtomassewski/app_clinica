@@ -4,8 +4,11 @@ import 'package:flutter/material.dart'; // Import necessário para Colors
 import 'package:http/http.dart' as http;
 import 'auth_service.dart';
 import 'api_config.dart';
+import 'paciente_service.dart'; // Para modelos Paciente/Profissional/Prescricao, etc.
 
-// --- NOVO ENUM: Status de Atendimento ---
+// --- Enum e Extensões (assumindo que estão corretos) ---
+// NOTA: Se você tiver StatusAtendimento definido aqui e no paciente_service.dart,
+// o erro de colisão de nomes irá reaparecer! Mantenha a definição em apenas um local.
 enum StatusAtendimento {
   AGUARDANDO,
   ATENDIDO,
@@ -14,8 +17,6 @@ enum StatusAtendimento {
   REAGENDADO,
   NAO_COMPARECEU,
 }
-
-// --- EXTENSÃO: Facilita a exibição do Status na UI ---
 extension StatusExtension on StatusAtendimento {
   String get nomeFormatado {
     switch (this) {
@@ -33,7 +34,6 @@ extension StatusExtension on StatusAtendimento {
         return 'Não Compareceu';
     }
   }
-
   Color get cor {
     switch (this) {
       case StatusAtendimento.AGUARDANDO:
@@ -51,77 +51,79 @@ extension StatusExtension on StatusAtendimento {
     }
   }
 }
+// --- FIM ENUM/EXTENSÕES ---
 
-// --- CLASSE AGENDAMENTO (com novo campo 'status') ---
+
+// --- CLASSE AGENDAMENTO (assumindo que está correta e completa) ---
 class Agendamento {
   final int id;
   final DateTime dataHora;
   final int pacienteId;
   final int userId;
   final String? observacao;
-  final String pacienteNome;
-  final String? nomePrestador;
-  final StatusAtendimento status; // <--- NOVO CAMPO
+  
+  // CORREÇÃO: Tornar estes campos nullable (String?) para evitar o crash
+  final String? pacienteNome; 
+  final String? nomePrestador; 
+  
+  final StatusAtendimento status; 
 
   Agendamento.fromJson(Map<String, dynamic> json)
       : id = json['id'],
-        dataHora = DateTime.parse(json['data_hora']),
+        dataHora = DateTime.parse(json['data_hora_inicio']),
         pacienteId = json['pacienteId'],
-        userId = json['userId'],
+        userId = json['usuarioId'],
         observacao = json['observacao'],
-        pacienteNome = json['paciente']['nomeCompleto'],
-        nomePrestador = json['user']?['nome_completo'],
-        // Mapeia a string do JSON para o Enum
+        
+        // CORREÇÃO: Mapeamento seguro (se for null, atribui null)
+        pacienteNome = json['paciente']?['nome_completo'] as String?,
+        nomePrestador = json['usuario']?['nome_completo'] as String?,
+        
         status = StatusAtendimento.values.firstWhere(
             (e) => e.toString().split('.').last == json['status'],
             orElse: () => StatusAtendimento.AGUARDANDO 
         );
 }
 
-// --- CLASSE AGENDA SERVICE ---
+
+// --- CLASSE AGENDA SERVICE (CORRIGIDO) ---
 class AgendaService {
   final AuthService _authService;
- final String apiUrl = baseUrl;
+  // NOTA: O 'baseUrl' deve ser importado da api_config.dart
+  final String baseUrl = "https://thomasmedsoft-api.onrender.com"; 
 
   AgendaService(this._authService);
 
-  // ... (getAgendamentos e addAgendamento aqui) ...
-
+  // GET AGENDAMENTOS
   Future<List<Agendamento>> getAgendamentos({DateTime? date}) async {
-    // ... (MÉTODO EXISTENTE)
+    // ... (código existente) ...
     final token = await _authService.getToken();
     if (token == null) throw Exception('Não autenticado');
 
     String query = '';
     if (date != null) {
-      // Formato para buscar agendamentos em um dia específico
       query = '?date=${date.toIso8601String().split('T')[0]}';
     }
 
     final url = Uri.parse('$baseUrl/agendamentos$query');
 
-    final response = await http.get(
-      url,
-      headers: {
-        'Authorization': 'Bearer $token',
-      },
-    );
+    final response = await http.get(url, headers: {'Authorization': 'Bearer $token'});
 
     if (response.statusCode == 200) {
       final List<dynamic> jsonList = jsonDecode(response.body);
       return jsonList.map((json) => Agendamento.fromJson(json)).toList();
     } else {
-      throw Exception('Falha ao carregar agendamentos');
+      throw Exception('Falha ao carregar agendamentos.');
     }
   }
 
+  // MÉTODO DE CRIAÇÃO (CORRIGIDO PARA ACEITAR O DTO DO BACK-END)
   Future<Agendamento> addAgendamento({
-    required String dataHora,
     required int pacienteId,
-    required int prestadorId,
-    String? observacao,
+    required int usuarioId, // <-- CORREÇÃO: USAR nome correto do Back-End
+    required String data_hora_inicio, // <-- CORREÇÃO: USAR nome correto do Back-End
+    String? observacao, // <-- ADICIONADO: Para consistência com o Service/DTO
   }) async {
-    // ... (MÉTODO EXISTENTE)
     final token = await _authService.getToken();
     if (token == null) throw Exception('Não autenticado');
 
@@ -133,10 +135,10 @@ class AgendaService {
         'Authorization': 'Bearer $token',
       },
       body: jsonEncode({
-        'data_hora': dataHora,
+        'data_hora_inicio': data_hora_inicio,
         'pacienteId': pacienteId,
-        'userId': prestadorId,
-        if (observacao != null) 'observacao': observacao,
+        'usuarioId': usuarioId,
+        'observacao': observacao,
       }),
     );
 
@@ -148,11 +150,12 @@ class AgendaService {
     }
   }
 
-  // --- NOVO MÉTODO DE ATUALIZAÇÃO ---
+  // MÉTODO DE ATUALIZAÇÃO (CORRIGIDO PARA ACEITAR OBSERVAÇÃO)
   Future<void> updateAgendamento({
     required int agendamentoId,
     String? novaDataHora,
     StatusAtendimento? novoStatus,
+    String? observacao, // <-- CORREÇÃO: ADICIONADO ESTE PARÂMETRO
   }) async {
     final token = await _authService.getToken();
     if (token == null) throw Exception('Não autenticado');
@@ -160,15 +163,18 @@ class AgendaService {
     final Map<String, dynamic> body = {};
 
     if (novaDataHora != null) {
-      body['data_hora'] = novaDataHora; // Envia ISO String
+      body['data_hora_inicio'] = novaDataHora; // USAR data_hora_inicio
     }
 
     if (novoStatus != null) {
-      // Converte o enum Flutter para a string esperada pelo NestJS/Prisma (e.g., 'ATENDIDO')
       body['status'] = novoStatus.toString().split('.').last; 
     }
     
-    if (body.isEmpty) return; // Não faz chamada se não há o que atualizar
+    if (observacao != null) { // NOVO
+      body['observacao'] = observacao;
+    }
+
+    if (body.isEmpty) return;
 
     final url = Uri.parse('$baseUrl/agendamentos/$agendamentoId');
 

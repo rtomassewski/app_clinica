@@ -1,71 +1,58 @@
 // lib/agenda_service.dart
 import 'dart:convert';
-import 'package:flutter/material.dart'; // Import necessário para Colors
+import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'auth_service.dart';
 import 'api_config.dart';
-import 'paciente_service.dart'; // Para modelos Paciente/Profissional/Prescricao, etc.
+import 'paciente_service.dart'; // Para modelos Paciente/Profissional
 
-// --- Enum e Extensões (assumindo que estão corretos) ---
-// NOTA: Se você tiver StatusAtendimento definido aqui e no paciente_service.dart,
-// o erro de colisão de nomes irá reaparecer! Mantenha a definição em apenas um local.
+// --- ENUM CORRIGIDO (Igual ao Banco de Dados) ---
 enum StatusAtendimento {
-  AGUARDANDO,
-  ATENDIDO,
-  CANCELADO,
-  DESISTENCIA,
-  REAGENDADO,
-  NAO_COMPARECEU,
+  AGENDADO,  // Era AGUARDANDO
+  REALIZADO, // Era ATENDIDO
+  CANCELADO, // Igual
+  FALTOU     // Era NAO_COMPARECEU
 }
+
+// --- EXTENSÃO ATUALIZADA ---
 extension StatusExtension on StatusAtendimento {
   String get nomeFormatado {
     switch (this) {
-      case StatusAtendimento.AGUARDANDO:
-        return 'Aguardando';
-      case StatusAtendimento.ATENDIDO:
-        return 'Atendido';
+      case StatusAtendimento.AGENDADO:
+        return 'Aguardando'; // Visualmente mostramos "Aguardando"
+      case StatusAtendimento.REALIZADO:
+        return 'Atendido';   // Visualmente mostramos "Atendido"
       case StatusAtendimento.CANCELADO:
         return 'Cancelado';
-      case StatusAtendimento.DESISTENCIA:
-        return 'Desistência';
-      case StatusAtendimento.REAGENDADO:
-        return 'Reagendado';
-      case StatusAtendimento.NAO_COMPARECEU:
-        return 'Não Compareceu';
+      case StatusAtendimento.FALTOU:
+        return 'Faltou';
     }
   }
+
   Color get cor {
     switch (this) {
-      case StatusAtendimento.AGUARDANDO:
-        return Colors.blue;
-      case StatusAtendimento.ATENDIDO:
-        return Colors.green;
+      case StatusAtendimento.AGENDADO:
+        return Colors.blue; // Azul para agendado
+      case StatusAtendimento.REALIZADO:
+        return Colors.green; // Verde para realizado
       case StatusAtendimento.CANCELADO:
-        return Colors.red;
-      case StatusAtendimento.DESISTENCIA:
-        return Colors.red.shade700;
-      case StatusAtendimento.REAGENDADO:
-        return Colors.orange;
-      case StatusAtendimento.NAO_COMPARECEU:
-        return Colors.purple;
+        return Colors.red; // Vermelho para cancelado
+      case StatusAtendimento.FALTOU:
+        return Colors.purple; // Roxo para falta
     }
   }
 }
-// --- FIM ENUM/EXTENSÕES ---
+// --- FIM ENUM ---
 
-
-// --- CLASSE AGENDAMENTO (assumindo que está correta e completa) ---
+// --- CLASSE AGENDAMENTO ---
 class Agendamento {
   final int id;
   final DateTime dataHora;
   final int pacienteId;
   final int userId;
   final String? observacao;
-  
-  // CORREÇÃO: Tornar estes campos nullable (String?) para evitar o crash
-  final String? pacienteNome; 
-  final String? nomePrestador; 
-  
+  final String? pacienteNome;
+  final String? nomePrestador;
   final StatusAtendimento status; 
 
   Agendamento.fromJson(Map<String, dynamic> json)
@@ -74,29 +61,28 @@ class Agendamento {
         pacienteId = json['pacienteId'],
         userId = json['usuarioId'],
         observacao = json['observacao'],
-        
-        // CORREÇÃO: Mapeamento seguro (se for null, atribui null)
         pacienteNome = json['paciente']?['nome_completo'] as String?,
         nomePrestador = json['usuario']?['nome_completo'] as String?,
         
+        // Mapeia a string do JSON para o Enum (CORRIGIDO)
         status = StatusAtendimento.values.firstWhere(
             (e) => e.toString().split('.').last == json['status'],
-            orElse: () => StatusAtendimento.AGUARDANDO 
+            orElse: () => StatusAtendimento.AGENDADO // Padrão seguro
         );
 }
 
 
-// --- CLASSE AGENDA SERVICE (CORRIGIDO) ---
+// --- CLASSE AGENDA SERVICE ---
 class AgendaService {
   final AuthService _authService;
-  // NOTA: O 'baseUrl' deve ser importado da api_config.dart
-  final String baseUrl = "https://thomasmedsoft-api.onrender.com"; 
+  
+  // Use a constante do api_config.dart
+  // final String baseUrl = "https://thomasmedsoft-api.onrender.com"; 
 
   AgendaService(this._authService);
 
   // GET AGENDAMENTOS
   Future<List<Agendamento>> getAgendamentos({DateTime? date}) async {
-    // ... (código existente) ...
     final token = await _authService.getToken();
     if (token == null) throw Exception('Não autenticado');
 
@@ -117,12 +103,12 @@ class AgendaService {
     }
   }
 
-  // MÉTODO DE CRIAÇÃO (CORRIGIDO PARA ACEITAR O DTO DO BACK-END)
+  // ADICIONAR
   Future<Agendamento> addAgendamento({
     required int pacienteId,
-    required int usuarioId, // <-- CORREÇÃO: USAR nome correto do Back-End
-    required String data_hora_inicio, // <-- CORREÇÃO: USAR nome correto do Back-End
-    String? observacao, // <-- ADICIONADO: Para consistência com o Service/DTO
+    required int usuarioId,
+    required String data_hora_inicio,
+    String? observacao,
   }) async {
     final token = await _authService.getToken();
     if (token == null) throw Exception('Não autenticado');
@@ -139,6 +125,7 @@ class AgendaService {
         'pacienteId': pacienteId,
         'usuarioId': usuarioId,
         'observacao': observacao,
+        // O status padrão (AGENDADO) é definido pelo banco, não precisamos enviar
       }),
     );
 
@@ -146,16 +133,16 @@ class AgendaService {
       return Agendamento.fromJson(jsonDecode(response.body));
     } else {
       final errorBody = jsonDecode(response.body);
-      throw Exception('Falha ao adicionar agendamento: ${errorBody['message'] ?? response.statusCode}');
+      throw Exception('Falha ao adicionar: ${errorBody['message'] ?? response.statusCode}');
     }
   }
 
-  // MÉTODO DE ATUALIZAÇÃO (CORRIGIDO PARA ACEITAR OBSERVAÇÃO)
+  // ATUALIZAR
   Future<void> updateAgendamento({
     required int agendamentoId,
     String? novaDataHora,
     StatusAtendimento? novoStatus,
-    String? observacao, // <-- CORREÇÃO: ADICIONADO ESTE PARÂMETRO
+    String? observacao,
   }) async {
     final token = await _authService.getToken();
     if (token == null) throw Exception('Não autenticado');
@@ -163,14 +150,15 @@ class AgendaService {
     final Map<String, dynamic> body = {};
 
     if (novaDataHora != null) {
-      body['data_hora_inicio'] = novaDataHora; // USAR data_hora_inicio
+      body['data_hora_inicio'] = novaDataHora;
     }
 
     if (novoStatus != null) {
+      // Envia a string exata (ex: "REALIZADO") para o Back-End
       body['status'] = novoStatus.toString().split('.').last; 
     }
     
-    if (observacao != null) { // NOVO
+    if (observacao != null) {
       body['observacao'] = observacao;
     }
 
@@ -189,7 +177,7 @@ class AgendaService {
 
     if (response.statusCode != 200) {
       final errorBody = jsonDecode(response.body);
-      throw Exception('Falha ao atualizar agendamento: ${errorBody['message'] ?? response.statusCode}');
+      throw Exception('Falha ao atualizar: ${errorBody['message'] ?? response.statusCode}');
     }
   }
 }

@@ -249,14 +249,18 @@ class Agendamento {
 }
 
 class Profissional {
-  // ... (código existente)
   final int id;
   final String nomeCompleto;
-  Profissional({required this.id, required this.nomeCompleto});
+  final String? papel; // <--- TEM QUE TER ESTE CAMPO
+
+  Profissional({required this.id, required this.nomeCompleto, this.papel});
+
   factory Profissional.fromJson(Map<String, dynamic> json) {
     return Profissional(
       id: json['id'],
-      nomeCompleto: json['nome_completo'],
+      nomeCompleto: json['nome_completo'] ?? 'Sem Nome',
+      // Mapeia o papel vindo do JSON (pode vir como string direta ou objeto {nome: ...})
+      papel: json['papel'] is Map ? json['papel']['nome'] : json['papel'], 
     );
   }
 }

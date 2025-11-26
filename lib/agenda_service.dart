@@ -4,47 +4,36 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'auth_service.dart';
 import 'api_config.dart';
-import 'paciente_service.dart'; // Para modelos Paciente/Profissional
 
-// --- ENUM CORRIGIDO (Igual ao Banco de Dados) ---
+// --- ENUM (Mantemos igual ao Banco) ---
 enum StatusAtendimento {
-  AGENDADO,  // Era AGUARDANDO
-  REALIZADO, // Era ATENDIDO
-  CANCELADO, // Igual
-  FALTOU     // Era NAO_COMPARECEU
+  AGENDADO,
+  REALIZADO,
+  CANCELADO,
+  FALTOU
 }
 
-// --- EXTENSÃO ATUALIZADA ---
 extension StatusExtension on StatusAtendimento {
   String get nomeFormatado {
     switch (this) {
-      case StatusAtendimento.AGENDADO:
-        return 'Aguardando'; // Visualmente mostramos "Aguardando"
-      case StatusAtendimento.REALIZADO:
-        return 'Atendido';   // Visualmente mostramos "Atendido"
-      case StatusAtendimento.CANCELADO:
-        return 'Cancelado';
-      case StatusAtendimento.FALTOU:
-        return 'Faltou';
+      case StatusAtendimento.AGENDADO: return 'Aguardando';
+      case StatusAtendimento.REALIZADO: return 'Atendido';
+      case StatusAtendimento.CANCELADO: return 'Cancelado';
+      case StatusAtendimento.FALTOU: return 'Faltou';
     }
   }
 
   Color get cor {
     switch (this) {
-      case StatusAtendimento.AGENDADO:
-        return Colors.blue; // Azul para agendado
-      case StatusAtendimento.REALIZADO:
-        return Colors.green; // Verde para realizado
-      case StatusAtendimento.CANCELADO:
-        return Colors.red; // Vermelho para cancelado
-      case StatusAtendimento.FALTOU:
-        return Colors.purple; // Roxo para falta
+      case StatusAtendimento.AGENDADO: return Colors.blue;
+      case StatusAtendimento.REALIZADO: return Colors.green;
+      case StatusAtendimento.CANCELADO: return Colors.red;
+      case StatusAtendimento.FALTOU: return Colors.purple;
     }
   }
 }
-// --- FIM ENUM ---
 
-// --- CLASSE AGENDAMENTO ---
+// --- CLASSE AGENDAMENTO ATUALIZADA ---
 class Agendamento {
   final int id;
   final DateTime dataHora;
@@ -53,7 +42,11 @@ class Agendamento {
   final String? observacao;
   final String? pacienteNome;
   final String? nomePrestador;
-  final StatusAtendimento status; 
+  final StatusAtendimento status;
+  
+  // NOVOS CAMPOS
+  final double valorTotal;
+  final List<String> procedimentosNomes; // Apenas para exibir na lista
 
   Agendamento.fromJson(Map<String, dynamic> json)
       : id = json['id'],
@@ -63,25 +56,25 @@ class Agendamento {
         observacao = json['observacao'],
         pacienteNome = json['paciente']?['nome_completo'] as String?,
         nomePrestador = json['usuario']?['nome_completo'] as String?,
-        
-        // Mapeia a string do JSON para o Enum (CORRIGIDO)
         status = StatusAtendimento.values.firstWhere(
             (e) => e.toString().split('.').last == json['status'],
-            orElse: () => StatusAtendimento.AGENDADO // Padrão seguro
-        );
+            orElse: () => StatusAtendimento.AGENDADO
+        ),
+        // Mapeia os novos campos
+        valorTotal = (json['valor_total'] as num?)?.toDouble() ?? 0.0,
+        procedimentosNomes = (json['procedimentos'] as List<dynamic>?)
+            ?.map((p) => p['procedimento']['nome'] as String)
+            .toList() ?? [];
 }
 
-
-// --- CLASSE AGENDA SERVICE ---
 class AgendaService {
   final AuthService _authService;
-  
-  // Use a constante do api_config.dart
-  // final String baseUrl = "https://thomasmedsoft-api.onrender.com"; 
+  // final String baseUrl = "http://10.0.2.2:3000"; // Use a URL correta (Local ou Render)
+  final String baseUrl = "https://thomasmedsoft-api.onrender.com";
 
   AgendaService(this._authService);
 
-  // GET AGENDAMENTOS
+  // LISTAR
   Future<List<Agendamento>> getAgendamentos({DateTime? date}) async {
     final token = await _authService.getToken();
     if (token == null) throw Exception('Não autenticado');
@@ -92,7 +85,6 @@ class AgendaService {
     }
 
     final url = Uri.parse('$baseUrl/agendamentos$query');
-
     final response = await http.get(url, headers: {'Authorization': 'Bearer $token'});
 
     if (response.statusCode == 200) {
@@ -103,12 +95,13 @@ class AgendaService {
     }
   }
 
-  // ADICIONAR
+  // ADICIONAR (ATUALIZADO PARA RECEBER PROCEDIMENTOS)
   Future<Agendamento> addAgendamento({
     required int pacienteId,
     required int usuarioId,
     required String data_hora_inicio,
     String? observacao,
+    List<int>? procedimentoIds, // <-- NOVO PARÂMETRO
   }) async {
     final token = await _authService.getToken();
     if (token == null) throw Exception('Não autenticado');
@@ -125,7 +118,7 @@ class AgendaService {
         'pacienteId': pacienteId,
         'usuarioId': usuarioId,
         'observacao': observacao,
-        // O status padrão (AGENDADO) é definido pelo banco, não precisamos enviar
+        'procedimentoIds': procedimentoIds ?? [], // Envia a lista
       }),
     );
 
@@ -149,35 +142,22 @@ class AgendaService {
 
     final Map<String, dynamic> body = {};
 
-    if (novaDataHora != null) {
-      body['data_hora_inicio'] = novaDataHora;
-    }
-
-    if (novoStatus != null) {
-      // Envia a string exata (ex: "REALIZADO") para o Back-End
-      body['status'] = novoStatus.toString().split('.').last; 
-    }
-    
-    if (observacao != null) {
-      body['observacao'] = observacao;
-    }
+    if (novaDataHora != null) body['data_hora_inicio'] = novaDataHora;
+    if (novoStatus != null) body['status'] = novoStatus.toString().split('.').last;
+    if (observacao != null) body['observacao'] = observacao;
 
     if (body.isEmpty) return;
 
     final url = Uri.parse('$baseUrl/agendamentos/$agendamentoId');
-
     final response = await http.patch(
       url,
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $token',
-      },
+      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
       body: jsonEncode(body),
     );
 
     if (response.statusCode != 200) {
       final errorBody = jsonDecode(response.body);
-      throw Exception('Falha ao atualizar: ${errorBody['message'] ?? response.statusCode}');
+      throw Exception('Falha ao atualizar: ${errorBody['message']}');
     }
   }
 }

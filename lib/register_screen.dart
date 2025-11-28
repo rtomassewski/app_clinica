@@ -32,8 +32,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
         nomeFantasia: _clinicaNomeController.text,
         cnpj: _cnpjController.text,
         nomeAdmin: _adminNomeController.text,
-        emailAdmin: _adminEmailController.text,
-        senhaAdmin: _adminSenhaController.text,
+        email: _adminEmailController.text,
+        senha: _adminSenhaController.text,
       );
       
       // Se chegar aqui, o login foi um sucesso!

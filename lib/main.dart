@@ -1,15 +1,18 @@
 // lib/main.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:intl/date_symbol_data_local.dart';
+
+// Services e Telas
 import 'auth_service.dart';
 import 'home_screen.dart';
 import 'login_screen.dart';
-import 'paciente_service.dart';
 import 'main_screen.dart';
-import 'package:intl/date_symbol_data_local.dart';
+import 'assinatura_screen.dart';
+
+// Services de Domínio
+import 'paciente_service.dart';
 import 'gestao_service.dart';
-import 'assinatura_screen.dart'; 
-import 'auth_service.dart';
 import 'internacao_service.dart';
 import 'enfermagem_service.dart';
 import 'relatorios_service.dart';
@@ -17,55 +20,58 @@ import 'financeiro_service.dart';
 import 'estoque_service.dart';
 import 'impressoes_service.dart';
 import 'configuracao_service.dart';
-import 'agenda_service.dart'; // 1. Garanta que este import está aqui
-import 'gestao_service.dart';
+import 'agenda_service.dart';
 import 'procedimento_service.dart';
+import 'evolucao_service.dart';
 
-void main() async { // 2. TRANSFORME EM 'async'
-  // 3. GARANTA QUE O FLUTTER ESTEJA INICIALIZADO
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
-  // 4. INICIALIZE OS DADOS DE LOCALIZAÇÃO (A CORREÇÃO)
   await initializeDateFormatting('pt_BR', null); 
 
   runApp(
     MultiProvider(
       providers: [
+        // 1. Inicia o AuthService e já tenta recuperar o token salvo (Auto-Login)
         ChangeNotifierProvider(
-          create: (context) => AuthService(),
+          create: (context) => AuthService()..tryAutoLogin(),
         ),
+        
+        // 2. Todos os outros services dependem do AuthService para pegar o Token
         ProxyProvider<AuthService, AgendaService>(
-          update: (context, auth, previous) => AgendaService(auth), // <-- ESTA LINHA ESTAVA A FALTAR
+          update: (_, auth, __) => AgendaService(auth),
         ),
         ProxyProvider<AuthService, PacienteService>(
-          update: (context, auth, previous) => PacienteService(auth),
+          update: (_, auth, __) => PacienteService(auth),
         ),
         ProxyProvider<AuthService, GestaoService>(
-          update: (context, auth, previous) => GestaoService(auth),
+          update: (_, auth, __) => GestaoService(auth),
         ),
         ProxyProvider<AuthService, InternacaoService>(
-          update: (context, auth, previous) => InternacaoService(auth),
+          update: (_, auth, __) => InternacaoService(auth),
         ),
         ProxyProvider<AuthService, EnfermagemService>(
-          update: (context, auth, previous) => EnfermagemService(auth),
+          update: (_, auth, __) => EnfermagemService(auth),
         ),
         ProxyProvider<AuthService, RelatoriosService>(
-          update: (context, auth, previous) => RelatoriosService(auth),
+          update: (_, auth, __) => RelatoriosService(auth),
         ),
         ProxyProvider<AuthService, FinanceiroService>(
-          update: (context, auth, previous) => FinanceiroService(auth),
+          update: (_, auth, __) => FinanceiroService(auth),
         ),
         ProxyProvider<AuthService, EstoqueService>(
-          update: (context, auth, previous) => EstoqueService(auth),
+          update: (_, auth, __) => EstoqueService(auth),
         ),
         ProxyProvider<AuthService, ImpressoesService>(
-          update: (context, auth, previous) => ImpressoesService(auth),
+          update: (_, auth, __) => ImpressoesService(auth),
         ),
         ProxyProvider<AuthService, ConfiguracaoService>(
-          update: (context, auth, previous) => ConfiguracaoService(auth),
+          update: (_, auth, __) => ConfiguracaoService(auth),
         ),
         ProxyProvider<AuthService, ProcedimentoService>(
-          update: (context, auth, previous) => ProcedimentoService(auth),
+          update: (_, auth, __) => ProcedimentoService(auth),
+        ),
+        ProxyProvider<AuthService, EvolucaoService>(
+          update: (_, auth, __) => EvolucaoService(auth),
         ),
       ],
       child: const MyApp(),
@@ -82,32 +88,30 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'Sistema da Clínica',
       theme: ThemeData(
-        primarySwatch: Colors.blue,
+        primarySwatch: Colors.teal, // Mudei para teal para combinar com as outras telas
         visualDensity: VisualDensity.adaptivePlatformDensity,
+        useMaterial3: false, // Mantém estilo clássico se preferir
       ),
-      // 2. O "roteador" principal
+      // O Consumer escuta o AuthService.
+      // Sempre que 'login' ou 'logout' for chamado, ele reconstrói essa parte.
       home: Consumer<AuthService>(
         builder: (context, auth, child) {
           
-          // 1. Se NÃO está autenticado -> Tela de Login
+          // 1. Se NÃO está logado -> Mostra Login
           if (!auth.isAuthenticated) {
             return const LoginScreen();
           }
 
-          // 2. Se ESTÁ autenticado, checamos a licença
+          // 2. Se ESTÁ logado -> Verifica status da licença
           final status = auth.licencaStatus;
           
           if (status == StatusLicenca.ATIVA || status == StatusLicenca.TESTE) {
-            // 2a. Se a licença está OK -> Vai para o App (MainScreen)
             return const MainScreen();
           } else {
-            // 2b. Se a licença está INADIMPLENTE, CANCELADA, etc.
-            // -> Vai para a Tela de Bloqueio
             return const AssinaturaScreen();
           }
         },
       ),
-      // --- FIM DA SUBSTITUIÇÃO ---
     );
   }
 }

@@ -3,9 +3,10 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'auth_service.dart';
-import 'api_config.dart';
+import 'api_config.dart'; 
 
-// --- ENUM (Mantemos igual ao Banco) ---
+// --- 1. ENUMS & EXTENSIONS ---
+
 enum StatusAtendimento {
   AGENDADO,
   REALIZADO,
@@ -16,8 +17,8 @@ enum StatusAtendimento {
 extension StatusExtension on StatusAtendimento {
   String get nomeFormatado {
     switch (this) {
-      case StatusAtendimento.AGENDADO: return 'Aguardando';
-      case StatusAtendimento.REALIZADO: return 'Atendido';
+      case StatusAtendimento.AGENDADO: return 'Agendado';
+      case StatusAtendimento.REALIZADO: return 'Realizado';
       case StatusAtendimento.CANCELADO: return 'Cancelado';
       case StatusAtendimento.FALTOU: return 'Faltou';
     }
@@ -28,136 +29,190 @@ extension StatusExtension on StatusAtendimento {
       case StatusAtendimento.AGENDADO: return Colors.blue;
       case StatusAtendimento.REALIZADO: return Colors.green;
       case StatusAtendimento.CANCELADO: return Colors.red;
-      case StatusAtendimento.FALTOU: return Colors.purple;
+      case StatusAtendimento.FALTOU: return Colors.orange;
     }
   }
 }
 
-// --- CLASSE AGENDAMENTO ATUALIZADA ---
+// --- 2. MODELO AGENDAMENTO ---
+
 class Agendamento {
   final int id;
   final DateTime dataHora;
-  final int pacienteId;
-  final int userId;
-  final String? observacao;
-  final String? pacienteNome;
-  final String? nomePrestador;
   final StatusAtendimento status;
-  
-  // NOVOS CAMPOS
+  final String? observacao;
+  final int pacienteId;
+  final String? pacienteNome;
+  final int userId; 
+  final String? profissionalNome;
+  final List<String> procedimentosNomes;
   final double valorTotal;
-  final List<String> procedimentosNomes; // Apenas para exibir na lista
 
-  Agendamento.fromJson(Map<String, dynamic> json)
-      : id = json['id'],
-        dataHora = DateTime.parse(json['data_hora_inicio']),
-        pacienteId = json['pacienteId'],
-        userId = json['usuarioId'],
-        observacao = json['observacao'],
-        pacienteNome = json['paciente']?['nome_completo'] as String?,
-        nomePrestador = json['usuario']?['nome_completo'] as String?,
-        status = StatusAtendimento.values.firstWhere(
-            (e) => e.toString().split('.').last == json['status'],
-            orElse: () => StatusAtendimento.AGENDADO
-        ),
-        // Mapeia os novos campos
-        valorTotal = (json['valor_total'] as num?)?.toDouble() ?? 0.0,
-        procedimentosNomes = (json['procedimentos'] as List<dynamic>?)
-            ?.map((p) => p['procedimento']['nome'] as String)
-            .toList() ?? [];
+  Agendamento({
+    required this.id,
+    required this.dataHora,
+    required this.status,
+    this.observacao,
+    required this.pacienteId,
+    this.pacienteNome,
+    required this.userId,
+    this.profissionalNome,
+    required this.procedimentosNomes,
+    this.valorTotal = 0.0,
+  });
+
+  String? get nomePrestador => profissionalNome;
+
+  factory Agendamento.fromJson(Map<String, dynamic> json) {
+    DateTime data = DateTime.now();
+    if (json['data_hora_inicio'] != null) {
+      data = DateTime.parse(json['data_hora_inicio']);
+    }
+
+    StatusAtendimento statusEnum = StatusAtendimento.AGENDADO;
+    if (json['status'] != null) {
+      try {
+        statusEnum = StatusAtendimento.values.firstWhere(
+          (e) => e.toString().split('.').last == json['status'].toString().toUpperCase(),
+          orElse: () => StatusAtendimento.AGENDADO,
+        );
+      } catch (_) {}
+    }
+
+    List<String> procs = [];
+    if (json['procedimentos'] != null && json['procedimentos'] is List) {
+      procs = (json['procedimentos'] as List).map((item) {
+        if (item['procedimento'] != null) {
+          return item['procedimento']['nome'].toString();
+        }
+        return "Procedimento";
+      }).toList();
+    }
+    
+    double valor = 0.0;
+    if (json['valor_total'] != null) {
+      valor = double.tryParse(json['valor_total'].toString()) ?? 0.0;
+    }
+
+    return Agendamento(
+      id: json['id'],
+      dataHora: data,
+      status: statusEnum,
+      observacao: json['observacao'],
+      pacienteId: json['pacienteId'] ?? 0,
+      pacienteNome: json['paciente']?['nome_completo'] ?? 'Paciente',
+      userId: json['usuarioId'] ?? 0,
+      profissionalNome: json['usuario']?['nome_completo'],
+      procedimentosNomes: procs,
+      valorTotal: valor,
+    );
+  }
 }
+
+// --- 3. SERVIÇO AJUSTADO ---
 
 class AgendaService {
   final AuthService _authService;
-  // final String baseUrl = "http://10.0.2.2:3000"; // Use a URL correta (Local ou Render)
-  final String baseUrl = "https://thomasmedsoft-api.onrender.com";
+  final String baseUrl = "https://thomasmedsoft-api.onrender.com"; 
 
   AgendaService(this._authService);
 
-  // LISTAR
+  // GET
   Future<List<Agendamento>> getAgendamentos({DateTime? date}) async {
     final token = await _authService.getToken();
-    if (token == null) throw Exception('Não autenticado');
-
-    String query = '';
+    String query = "";
     if (date != null) {
-      query = '?date=${date.toIso8601String().split('T')[0]}';
+      final dateStr = "${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}";
+      query = "?date=$dateStr";
     }
 
     final url = Uri.parse('$baseUrl/agendamentos$query');
-    final response = await http.get(url, headers: {'Authorization': 'Bearer $token'});
+
+    final response = await http.get(
+      url,
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      },
+    );
 
     if (response.statusCode == 200) {
-      final List<dynamic> jsonList = jsonDecode(response.body);
+      List jsonList = jsonDecode(response.body);
       return jsonList.map((json) => Agendamento.fromJson(json)).toList();
     } else {
-      throw Exception('Falha ao carregar agendamentos.');
+      if (response.statusCode == 403) return [];
+      throw Exception('Erro ao carregar agenda: ${response.statusCode}');
     }
   }
 
-  // ADICIONAR (ATUALIZADO PARA RECEBER PROCEDIMENTOS)
-  Future<Agendamento> addAgendamento({
+  // CREATE
+  Future<void> addAgendamento({
     required int pacienteId,
     required int usuarioId,
     required String data_hora_inicio,
+    required List<int> procedimentoIds,
     String? observacao,
-    List<int>? procedimentoIds, // <-- NOVO PARÂMETRO
   }) async {
     final token = await _authService.getToken();
-    if (token == null) throw Exception('Não autenticado');
-
     final url = Uri.parse('$baseUrl/agendamentos');
+
+    final body = {
+      'pacienteId': pacienteId,
+      'usuarioId': usuarioId,
+      'data_hora_inicio': data_hora_inicio,
+      'procedimentoIds': procedimentoIds, 
+      'observacao': observacao ?? '',
+    };
+
     final response = await http.post(
       url,
       headers: {
-        'Content-Type': 'application/json',
         'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
       },
-      body: jsonEncode({
-        'data_hora_inicio': data_hora_inicio,
-        'pacienteId': pacienteId,
-        'usuarioId': usuarioId,
-        'observacao': observacao,
-        'procedimentoIds': procedimentoIds ?? [], // Envia a lista
-      }),
+      body: jsonEncode(body),
     );
 
-    if (response.statusCode == 201) {
-      return Agendamento.fromJson(jsonDecode(response.body));
-    } else {
-      final errorBody = jsonDecode(response.body);
-      throw Exception('Falha ao adicionar: ${errorBody['message'] ?? response.statusCode}');
+    if (response.statusCode != 201) {
+      throw Exception('Erro ao criar agendamento: ${response.body}');
     }
   }
 
-  // ATUALIZAR
+  // UPDATE (Agora aceita observacao!)
   Future<void> updateAgendamento({
     required int agendamentoId,
-    String? novaDataHora,
     StatusAtendimento? novoStatus,
-    String? observacao,
+    String? novaDataHora,
+    String? observacao, // <--- ADICIONADO AQUI
   }) async {
     final token = await _authService.getToken();
-    if (token == null) throw Exception('Não autenticado');
+    final url = Uri.parse('$baseUrl/agendamentos/$agendamentoId');
 
     final Map<String, dynamic> body = {};
 
-    if (novaDataHora != null) body['data_hora_inicio'] = novaDataHora;
-    if (novoStatus != null) body['status'] = novoStatus.toString().split('.').last;
-    if (observacao != null) body['observacao'] = observacao;
+    if (novoStatus != null) {
+      body['status'] = novoStatus.toString().split('.').last;
+    }
 
-    if (body.isEmpty) return;
+    if (novaDataHora != null) {
+      body['data_hora_inicio'] = novaDataHora;
+    }
 
-    final url = Uri.parse('$baseUrl/agendamentos/$agendamentoId');
+    if (observacao != null) { // <--- LÓGICA ADICIONADA
+      body['observacao'] = observacao;
+    }
+
     final response = await http.patch(
       url,
-      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      },
       body: jsonEncode(body),
     );
 
     if (response.statusCode != 200) {
-      final errorBody = jsonDecode(response.body);
-      throw Exception('Falha ao atualizar: ${errorBody['message']}');
+      throw Exception('Erro ao atualizar agendamento: ${response.body}');
     }
   }
 }

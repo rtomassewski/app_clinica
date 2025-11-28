@@ -2,7 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'configuracao_service.dart';
-import 'auth_service.dart';
+import 'auth_service.dart'; 
 
 class ConfiguracaoScreen extends StatefulWidget {
   const ConfiguracaoScreen({Key? key}) : super(key: key);

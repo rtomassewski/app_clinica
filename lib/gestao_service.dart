@@ -9,6 +9,25 @@ class Papel {
   final String nome;
 
   Papel({required this.id, required this.nome});
+
+  // --- ADICIONE ESTE BLOCO (FACTORY) ---
+  factory Papel.fromJson(Map<String, dynamic> json) {
+    return Papel(
+      id: json['id'],
+      // Ajuste aqui se o seu backend manda 'nome' como "ADMINISTRADOR" 
+      // e você quer formatar, ou use direto json['nome']
+      nome: json['nome'], 
+    );
+  }
+
+  // É importante sobrescrever o == e hashCode para o Dropdown funcionar bem
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is Papel && runtimeType == other.runtimeType && id == other.id;
+
+  @override
+  int get hashCode => id.hashCode;
 }
 
 // Modelo para o usuário (da lista GET /usuarios)
@@ -149,6 +168,26 @@ class GestaoService {
     }
     if (response.statusCode != 200) {
       throw Exception('Falha ao desativar usuário.');
+    }
+  }
+  Future<List<Papel>> getPapeis() async {
+    final token = await _authService.getToken();
+    // Ajuste a URL se necessário
+    final url = Uri.parse('$baseUrl/usuarios/papeis/todos'); 
+
+    final response = await http.get(
+      url,
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      },
+    );
+
+    if (response.statusCode == 200) {
+      List jsonList = jsonDecode(response.body);
+      return jsonList.map((json) => Papel.fromJson(json)).toList();
+    } else {
+      throw Exception('Erro ao carregar cargos: ${response.statusCode}');
     }
   }
 }

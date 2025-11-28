@@ -11,8 +11,9 @@ import 'dashboard_screen.dart';
 import 'financeiro_screen.dart';
 import 'estoque_screen.dart';
 import 'configuracao_screen.dart';
-import 'procedimentos_screen.dart'; // Import da tela de serviços
-import 'login_screen.dart'; // Import para redirecionar ao sair
+import 'procedimentos_screen.dart';
+// ADICIONEI ESTE IMPORT PARA O DENTISTA USAR:
+import 'meus_atendimentos_screen.dart'; 
 
 class MainScreen extends StatefulWidget {
   const MainScreen({Key? key}) : super(key: key);
@@ -31,7 +32,6 @@ class _MainScreenState extends State<MainScreen> {
   @override
   void initState() {
     super.initState();
-    // A construção das abas acontece no didChangeDependencies ou build para ter acesso ao provider seguro
   }
 
   @override
@@ -117,7 +117,6 @@ class _MainScreenState extends State<MainScreen> {
       ));
     }
     
-    // NOTA: Se o índice selecionado estourar o tamanho da nova lista (ex: ao trocar de usuário), reseta para 0
     if (_selectedIndex >= _telas.length) {
       _selectedIndex = 0;
     }
@@ -129,28 +128,35 @@ class _MainScreenState extends State<MainScreen> {
     });
   }
 
-  // --- LOGOUT ---
+  // --- LOGOUT CORRIGIDO ---
   void _logout() {
+    // 1. Fecha o menu lateral primeiro
+    Navigator.pop(context); 
+
+    // 2. Chama apenas o logout do serviço.
+    // O main.dart vai detectar a mudança e redirecionar para o Login automaticamente.
+    // REMOVI O Navigator.pushReplacement QUE CAUSAVA O ERRO.
     Provider.of<AuthService>(context, listen: false).logout();
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (context) => const LoginScreen()),
-    );
   }
 
   @override
   Widget build(BuildContext context) {
-    // Recupera dados do usuário para mostrar no Menu Lateral
     final authService = Provider.of<AuthService>(context);
     final usuario = authService.usuarioLogado;
 
+    // Verifica se é profissional de saúde (mas não admin/enfermeiro)
+    // para mostrar o botão do Painel de Atendimentos
+    bool isEspecialista = !authService.isAdmin && 
+                          !authService.isEnfermagem && 
+                          !authService.isAtendente &&
+                          !authService.isGestor;
+
     return Scaffold(
-      // 1. AppBar é necessário para mostrar o ícone do Menu (Hamburger)
       appBar: AppBar(
         title: const Text('ThomasMedSoft'),
         centerTitle: true,
       ),
       
-      // 2. DRAWER (Menu Lateral) - Aqui ficam os botões extras
       drawer: Drawer(
         child: ListView(
           padding: EdgeInsets.zero,
@@ -173,16 +179,31 @@ class _MainScreenState extends State<MainScreen> {
             ),
             
             // --- BOTÃO CATÁLOGO DE SERVIÇOS ---
-            // (Exibido apenas para Admins ou Gestores)
             if (authService.isAdmin || authService.isGestor)
               ListTile(
                 leading: const Icon(Icons.price_check, color: Colors.teal),
                 title: const Text('Catálogo de Serviços'),
                 onTap: () {
-                  Navigator.pop(context); // Fecha o menu
+                  Navigator.pop(context); 
                   Navigator.push(
                     context,
                     MaterialPageRoute(builder: (context) => const ProcedimentosScreen()),
+                  );
+                },
+              ),
+
+            // --- NOVO: BOTÃO PAINEL DO ESPECIALISTA ---
+            // Adicionei isso para que o Dentista consiga acessar a tela que criamos
+            if (isEspecialista || authService.isAdmin) 
+               ListTile(
+                leading: const Icon(Icons.medical_services_outlined, color: Colors.teal),
+                title: const Text('Painel do Especialista'),
+                subtitle: const Text('Meus Atendimentos'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const MeusAtendimentosScreen()),
                   );
                 },
               ),
@@ -193,24 +214,22 @@ class _MainScreenState extends State<MainScreen> {
             ListTile(
               leading: const Icon(Icons.exit_to_app, color: Colors.red),
               title: const Text('Sair'),
-              onTap: _logout,
+              onTap: _logout, // Chama a função corrigida
             ),
           ],
         ),
       ),
 
-      // CORPO DA TELA (Muda conforme a aba de baixo selecionada)
       body: _telas.isNotEmpty 
           ? _telas.elementAt(_selectedIndex) 
           : const Center(child: CircularProgressIndicator()),
 
-      // BARRA DE NAVEGAÇÃO INFERIOR
       bottomNavigationBar: _abas.isNotEmpty 
           ? BottomNavigationBar(
               items: _abas,
               currentIndex: _selectedIndex,
               onTap: _onItemTapped,
-              type: BottomNavigationBarType.fixed, // Importante para mais de 3 itens
+              type: BottomNavigationBarType.fixed,
               backgroundColor: Theme.of(context).canvasColor,
               selectedItemColor: Theme.of(context).colorScheme.primary,
               unselectedItemColor: Colors.grey[600],

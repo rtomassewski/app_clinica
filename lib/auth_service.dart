@@ -45,12 +45,38 @@ class AuthService with ChangeNotifier {
   StatusLicenca get licencaStatus => _licencaStatus;
   TipoPlano get licencaPlano => _licencaPlano;
 
-  // Roles
-  bool get isAdmin => _usuario?.papel == 'ADMINISTRADOR';
-  bool get isGestor => _usuario?.papel == 'COORDENADOR' || _usuario?.papel == 'ADMINISTRADOR';
-  bool get isEnfermagem => _usuario?.papel == 'ENFERMEIRO' || _usuario?.papel == 'TECNICO';
-  bool get isAtendente => _usuario?.papel == 'RECEPCIONISTA' || _usuario?.papel == 'ATENDENTE';
-  bool get podeAprazar => isEnfermagem || isAdmin;
+  // --- GETTERS DE PERMISSÃO (ROLES) ---
+
+  bool get isAdmin {
+    final p = usuarioLogado?.papel?.toUpperCase().trim() ?? '';
+    return p == 'ADMINISTRADOR'; 
+  }
+
+  bool get isGestor {
+    final p = usuarioLogado?.papel?.toUpperCase().trim() ?? '';
+    return p == 'GESTOR' || p == 'COORDENADOR'; 
+  }
+
+  bool get isAtendente {
+    final p = usuarioLogado?.papel?.toUpperCase().trim() ?? '';
+    return p == 'ATENDENTE' || p == 'RECEPCIONISTA'; 
+  }
+
+  bool get isEnfermagem {
+    final p = usuarioLogado?.papel?.toUpperCase().trim() ?? '';
+    return p == 'ENFERMEIRO' || p == 'TECNICO' || p == 'AUXILIAR';
+  }
+
+  bool get isMedico => usuarioLogado?.papel?.toUpperCase().trim() == 'MEDICO';
+  bool get isDentista => usuarioLogado?.papel?.toUpperCase().trim() == 'DENTISTA';
+  bool get isPsicologo => usuarioLogado?.papel?.toUpperCase().trim() == 'PSICOLOGO';
+
+  // --- CORREÇÃO AQUI: ADICIONADO O GETTER FALTANTE ---
+  bool get podeAprazar {
+    // Quem pode realizar ações na tela de enfermagem?
+    return isEnfermagem || isMedico || isAdmin;
+  }
+  // ---------------------------------------------------
 
   // --- LOGIN COM LOGS ---
   Future<bool> login(String email, String senha) async {
@@ -109,7 +135,7 @@ class AuthService with ChangeNotifier {
         return true;
       } else {
         print("Login falhou. Resposta: ${response.body}");
-        await logout(); // Limpa sujeira
+        await logout(); 
         return false;
       }
     } catch (e) {

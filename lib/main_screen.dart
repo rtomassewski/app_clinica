@@ -40,14 +40,21 @@ class _MainScreenState extends State<MainScreen> {
     _buildTabs();
   }
 
-  void _buildTabs() {
+void _buildTabs() {
     final authService = Provider.of<AuthService>(context, listen: false);
+    final papel = authService.usuarioLogado?.papel;
+    print("--- DEBUG PERMISSÕES ---");
+    print("Papel vindo do banco: '$papel'");
+    print("É Admin? ${authService.isAdmin}");
+    print("É Atendente? ${authService.isAtendente}");
+    print("É Enfermagem? ${authService.isEnfermagem}");
 
     _telas.clear();
     _abas.clear();
 
-    // 1. DASHBOARD E FINANCEIRO (Apenas Admin com plano Premium)
-    if (authService.isAdmin) {
+    // --- BLOCO 1: DASHBOARD (Apenas Chefia) ---
+    if (authService.isAdmin || authService.isGestor) {
+      // Verifica plano premium se necessário, ou deixa liberado
       bool temPlanoPremium = 
           authService.licencaPlano == TipoPlano.GESTAO ||
           authService.licencaPlano == TipoPlano.ENTERPRISE ||
@@ -59,22 +66,28 @@ class _MainScreenState extends State<MainScreen> {
           icon: Icon(Icons.dashboard),
           label: 'Dash',
         ));
-        
-        _telas.add(const FinanceiroScreen());
-        _abas.add(const BottomNavigationBarItem(
-          icon: Icon(Icons.monetization_on),
-          label: 'Finan.',
-        ));
-        
-        _telas.add(const EstoqueScreen());
-        _abas.add(const BottomNavigationBarItem(
-          icon: Icon(Icons.inventory_2_outlined),
-          label: 'Estoque',
-        ));
       }
     }
 
-    // 2. ENFERMAGEM
+    // --- BLOCO 2: FINANCEIRO E ESTOQUE (Chefia + Atendente) ---
+    // Aqui resolve o problema do Financeiro não aparecer para o Atendente
+    if (authService.isAdmin || authService.isGestor || authService.isAtendente) {
+      
+      _telas.add(const FinanceiroScreen());
+      _abas.add(const BottomNavigationBarItem(
+        icon: Icon(Icons.monetization_on),
+        label: 'Finan.',
+      ));
+      
+      _telas.add(const EstoqueScreen());
+      _abas.add(const BottomNavigationBarItem(
+        icon: Icon(Icons.inventory_2_outlined),
+        label: 'Estoque',
+      ));
+    }
+
+    // --- BLOCO 3: ENFERMAGEM (Exclusivo Enfermagem) ---
+    // Removemos a chance do Atendente ver isso
     if (authService.isEnfermagem) {
       _telas.add(const EnfermagemScreen());
       _abas.add(const BottomNavigationBarItem(
@@ -82,8 +95,10 @@ class _MainScreenState extends State<MainScreen> {
         label: 'Enf.',
       ));
     }
+
+    // --- BLOCO 4: PADRÃO (TODOS veem isso) ---
+    // Colocamos aqui FORA de qualquer IF para não duplicar
     
-    // 3. ABAS PADRÃO (Pacientes e Agenda)
     _telas.add(const HomeScreen());
     _abas.add(const BottomNavigationBarItem(
       icon: Icon(Icons.people),
@@ -96,8 +111,8 @@ class _MainScreenState extends State<MainScreen> {
       label: 'Agenda',
     ));
 
-    // 4. ABAS EXCLUSIVAS DE ADMIN (Internação, Gestão, Config)
-    if (authService.isAdmin) {
+    // --- BLOCO 5: ADMINISTRAÇÃO (Apenas Chefia) ---
+    if (authService.isAdmin || authService.isGestor) {
       _telas.add(const InternacaoScreen());
       _abas.add(const BottomNavigationBarItem(
         icon: Icon(Icons.king_bed_outlined),
@@ -117,6 +132,7 @@ class _MainScreenState extends State<MainScreen> {
       ));
     }
     
+    // Segurança para não quebrar o índice ao trocar de usuário
     if (_selectedIndex >= _telas.length) {
       _selectedIndex = 0;
     }

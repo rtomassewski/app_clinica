@@ -31,12 +31,12 @@ void main() async {
   runApp(
     MultiProvider(
       providers: [
-        // 1. Inicia o AuthService e já tenta recuperar o token salvo (Auto-Login)
+        // 1. Inicia o AuthService e já tenta recuperar o token salvo
         ChangeNotifierProvider(
           create: (context) => AuthService()..tryAutoLogin(),
         ),
         
-        // 2. Todos os outros services dependem do AuthService para pegar o Token
+        // 2. Todos os outros services dependem do AuthService
         ProxyProvider<AuthService, AgendaService>(
           update: (_, auth, __) => AgendaService(auth),
         ),
@@ -55,9 +55,16 @@ void main() async {
         ProxyProvider<AuthService, RelatoriosService>(
           update: (_, auth, __) => RelatoriosService(auth),
         ),
-        ProxyProvider<AuthService, FinanceiroService>(
-          update: (_, auth, __) => FinanceiroService(auth),
+
+        // --- CORREÇÃO AQUI ---
+        // Mudamos de ProxyProvider para ChangeNotifierProxyProvider
+        // Isso permite que a tela de Financeiro atualize quando chamarmos notifyListeners()
+        ChangeNotifierProxyProvider<AuthService, FinanceiroService>(
+          create: (context) => FinanceiroService(Provider.of<AuthService>(context, listen: false)),
+          update: (_, auth, previous) => FinanceiroService(auth),
         ),
+        // ---------------------
+
         ProxyProvider<AuthService, EstoqueService>(
           update: (_, auth, __) => EstoqueService(auth),
         ),
@@ -88,21 +95,17 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'Sistema da Clínica',
       theme: ThemeData(
-        primarySwatch: Colors.teal, // Mudei para teal para combinar com as outras telas
+        primarySwatch: Colors.teal,
         visualDensity: VisualDensity.adaptivePlatformDensity,
-        useMaterial3: false, // Mantém estilo clássico se preferir
+        useMaterial3: false,
       ),
-      // O Consumer escuta o AuthService.
-      // Sempre que 'login' ou 'logout' for chamado, ele reconstrói essa parte.
       home: Consumer<AuthService>(
         builder: (context, auth, child) {
           
-          // 1. Se NÃO está logado -> Mostra Login
           if (!auth.isAuthenticated) {
             return const LoginScreen();
           }
 
-          // 2. Se ESTÁ logado -> Verifica status da licença
           final status = auth.licencaStatus;
           
           if (status == StatusLicenca.ATIVA || status == StatusLicenca.TESTE) {

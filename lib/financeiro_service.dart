@@ -1,21 +1,38 @@
 // lib/financeiro_service.dart
 import 'dart:convert';
+import 'package:flutter/material.dart'; // Necessário para ChangeNotifier
 import 'package:http/http.dart' as http;
 import 'auth_service.dart';
 import 'api_config.dart';
-import 'paciente_service.dart'; // Precisamos do modelo Paciente
-import 'gestao_service.dart'; // Precisamos do modelo Papel (para o 'addCategoria')
+import 'paciente_service.dart'; 
+import 'gestao_service.dart'; 
 
-// --- MODELOS DE DADOS ---
-enum TipoTransacao {
-  RECEITA,
-  DESPESA
+// --- 1. NOVOS MODELOS (CAIXA) ---
+
+class CaixaDiario {
+  final int id;
+  final double saldoInicial;
+  final String status; // 'ABERTO' ou 'FECHADO'
+  
+  CaixaDiario({required this.id, required this.saldoInicial, required this.status});
+
+  factory CaixaDiario.fromJson(Map<String, dynamic> json) {
+    return CaixaDiario(
+      id: json['id'], 
+      saldoInicial: double.tryParse(json['saldo_inicial'].toString()) ?? 0.0, 
+      status: json['status']
+    );
+  }
 }
+
+// --- MODELOS EXISTENTES ---
+
+enum TipoTransacao { RECEITA, DESPESA }
 
 class CategoriaFinanceira {
   final int id;
   final String nome;
-  final String tipo; // 'RECEITA' ou 'DESPESA'
+  final String tipo; 
 
   CategoriaFinanceira({required this.id, required this.nome, required this.tipo});
 
@@ -32,7 +49,7 @@ class TransacaoFinanceira {
   final int id;
   final String descricao;
   final double valor;
-  final String tipo; // 'RECEITA' ou 'DESPESA'
+  final String tipo; 
   final DateTime dataVencimento;
   final DateTime? dataPagamento;
   final String categoriaNome;
@@ -53,25 +70,107 @@ class TransacaoFinanceira {
     return TransacaoFinanceira(
       id: json['id'],
       descricao: json['descricao'],
-      valor: json['valor'].toDouble(),
+      valor: double.parse(json['valor'].toString()),
       tipo: json['tipo'],
       dataVencimento: DateTime.parse(json['data_vencimento']),
       dataPagamento: json['data_pagamento'] != null
           ? DateTime.parse(json['data_pagamento'])
           : null,
-      categoriaNome: json['categoria']['nome'],
+      categoriaNome: json['categoria']?['nome'] ?? 'Geral',
       pacienteNome: json['paciente']?['nome_completo'],
     );
   }
 }
 
-// --- O SERVIÇO ---
+// --- O SERVIÇO (ATUALIZADO) ---
 
-class FinanceiroService {
+// Adicionei 'with ChangeNotifier' para a tela saber quando o caixa abriu/fechou
+class FinanceiroService with ChangeNotifier {
   final AuthService _authService;
   FinanceiroService(this._authService);
 
-  // GET /categorias-financeiras
+  // Controle local do Caixa
+  CaixaDiario? _caixaAtual;
+  CaixaDiario? get caixaAtual => _caixaAtual;
+  bool get isCaixaAberto => _caixaAtual?.status == 'ABERTO';
+
+  // --- MÉTODOS DE CAIXA (NOVO) ---
+
+  // Verifica se existe um caixa aberto hoje para este usuário
+  Future<void> verificarStatusCaixa() async {
+    final token = await _authService.getToken();
+    if (token == null) return;
+
+    try {
+      final url = Uri.parse('$baseUrl/caixas/status/hoje'); 
+      final response = await http.get(url, headers: {'Authorization': 'Bearer $token'});
+
+      if (response.statusCode == 200) {
+        // CORREÇÃO: Verifica se o corpo não está vazio antes de fazer o decode
+        if (response.body.isNotEmpty && response.body != "null" && response.body != "") {
+          final data = json.decode(response.body);
+          _caixaAtual = CaixaDiario.fromJson(data);
+        } else {
+          _caixaAtual = null;
+        }
+      } else {
+        _caixaAtual = null;
+      }
+      notifyListeners(); 
+    } catch (e) {
+      print("Erro ao verificar status do caixa: $e");
+      // Em caso de erro, assumimos fechado para evitar travamento
+      _caixaAtual = null;
+      notifyListeners();
+    }
+  }
+
+  Future<void> abrirCaixa(double saldoInicial) async {
+    final token = await _authService.getToken();
+    if (token == null) throw Exception('Não autenticado');
+
+    final url = Uri.parse('$baseUrl/caixas/abrir');
+    final response = await http.post(
+      url,
+      headers: {
+        'Content-Type': 'application/json; charset=UTF-8',
+        'Authorization': 'Bearer $token',
+      },
+      body: json.encode({'saldo_inicial': saldoInicial}),
+    );
+
+    if (response.statusCode == 201) {
+      _caixaAtual = CaixaDiario.fromJson(json.decode(response.body));
+      notifyListeners();
+    } else {
+      throw Exception('Falha ao abrir o caixa: ${response.body}');
+    }
+  }
+
+  Future<void> fecharCaixa(double saldoFinal) async {
+    final token = await _authService.getToken();
+    if (token == null) throw Exception('Não autenticado');
+
+    final url = Uri.parse('$baseUrl/caixas/fechar');
+    final response = await http.post(
+      url,
+      headers: {
+        'Content-Type': 'application/json; charset=UTF-8',
+        'Authorization': 'Bearer $token',
+      },
+      body: json.encode({'saldo_final': saldoFinal}),
+    );
+
+    if (response.statusCode == 200) {
+      _caixaAtual = null; // Caixa fechado
+      notifyListeners();
+    } else {
+      throw Exception('Falha ao fechar o caixa: ${response.body}');
+    }
+  }
+
+  // --- MÉTODOS FINANCEIROS (MANTIDOS E MELHORADOS) ---
+
   Future<List<CategoriaFinanceira>> getCategorias() async {
     final token = await _authService.getToken();
     if (token == null) throw Exception('Não autenticado');
@@ -87,7 +186,6 @@ class FinanceiroService {
     }
   }
 
-  // GET /transacoes-financeiras
   Future<List<TransacaoFinanceira>> getTransacoes() async {
     final token = await _authService.getToken();
     if (token == null) throw Exception('Não autenticado');
@@ -97,48 +195,83 @@ class FinanceiroService {
 
     if (response.statusCode == 200) {
       final List<dynamic> jsonList = json.decode(response.body);
-      return jsonList.map((json) => TransacaoFinanceira.fromJson(json)).toList();
+      // Ordena por vencimento (mais recente primeiro)
+      final lista = jsonList.map((json) => TransacaoFinanceira.fromJson(json)).toList();
+      lista.sort((a, b) => b.dataVencimento.compareTo(a.dataVencimento));
+      return lista;
     } else {
       throw Exception('Falha ao carregar transações.');
     }
   }
 
-  // POST /transacoes-financeiras
+  // POST (COM RECORRÊNCIA)
   Future<void> addTransacao({
     required String descricao,
     required double valor,
-    required String tipo, // 'RECEITA' ou 'DESPESA'
+    required String tipo,
     required DateTime dataVencimento,
     required int categoriaId,
     int? pacienteId,
+    // Novos Argumentos para Recorrência
+    bool repetir = false,
+    int parcelas = 1,
   }) async {
     final token = await _authService.getToken();
     if (token == null) throw Exception('Não autenticado');
 
     final url = Uri.parse('$baseUrl/transacoes-financeiras');
-    final response = await http.post(
-      url,
-      headers: {
-        'Content-Type': 'application/json; charset=UTF-8',
-        'Authorization': 'Bearer $token',
-      },
-      body: json.encode({
-        'descricao': descricao,
-        'valor': valor,
-        'tipo': tipo,
-        'data_vencimento': dataVencimento.toIso8601String(),
-        'categoriaId': categoriaId,
-        'pacienteId': pacienteId,
-      }),
-    );
 
-    if (response.statusCode != 201) {
-      throw Exception('Falha ao salvar transação.');
+    // Se não for repetir, faz um loop de 1 volta só
+    int qtd = repetir ? parcelas : 1;
+
+    for (int i = 0; i < qtd; i++) {
+      // Calcula a data: adiciona 'i' meses à data original
+      // Ex: i=0 (hoje), i=1 (mês que vem), etc.
+      DateTime dataParcela = DateTime(
+        dataVencimento.year,
+        dataVencimento.month + i,
+        dataVencimento.day,
+      );
+
+      // Ajusta a descrição para saber qual parcela é
+      // Ex: "Tratamento Ortodôntico (1/12)"
+      String descFinal = descricao;
+      if (repetir && parcelas > 1) {
+        descFinal = "$descricao (${i + 1}/$parcelas)";
+      }
+
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json; charset=UTF-8',
+          'Authorization': 'Bearer $token',
+        },
+        body: json.encode({
+          'descricao': descFinal,
+          'valor': valor,
+          'tipo': tipo,
+          'data_vencimento': dataParcela.toIso8601String(),
+          'categoriaId': categoriaId,
+          'pacienteId': pacienteId,
+          // 'status' nasce como PENDENTE por padrão no banco
+        }),
+      );
+
+      if (response.statusCode != 201) {
+        throw Exception('Falha ao salvar transação ${i+1}.');
+      }
     }
   }
 
-  // PATCH /transacoes-financeiras/:id (para marcar como PAGO)
+  // PATCH (VALIDA CAIXA)
   Future<void> marcarComoPaga(int transacaoId) async {
+    // 1. Validação de Segurança: Só recebe se o caixa estiver aberto
+    // (Opcional: Você pode comentar isso se quiser permitir receber mesmo com caixa fechado,
+    // mas em sistemas rigorosos isso é bloqueado)
+    if (!isCaixaAberto) {
+      throw Exception('Você precisa ABRIR O CAIXA antes de movimentar dinheiro.');
+    }
+
     final token = await _authService.getToken();
     if (token == null) throw Exception('Não autenticado');
 
@@ -150,7 +283,6 @@ class FinanceiroService {
         'Authorization': 'Bearer $token',
       },
       body: json.encode({
-        // Define a data de pagamento como 'agora'
         'data_pagamento': DateTime.now().toIso8601String(),
       }),
     );
@@ -158,10 +290,9 @@ class FinanceiroService {
     if (response.statusCode != 200) {
       throw Exception('Falha ao marcar como paga.');
     }
-  } // <-- Fim do 'marcarComoPaga'
+  }
 
-  // POST /categorias-financeiras
-  // (Este método estava DENTRO do 'marcarComoPaga' no seu código)
+  // POST CATEGORIA
   Future<void> addCategoria({
     required String nome,
     required TipoTransacao tipo,
@@ -179,13 +310,12 @@ class FinanceiroService {
       },
       body: json.encode({
         'nome': nome,
-        'tipo': tipo.name, // Envia a string "RECEITA" ou "DESPESA"
+        'tipo': tipo.name, 
       }),
     );
 
     if (response.statusCode != 201) {
-      throw Exception('Falha ao criar categoria. Status: ${response.statusCode}');
+      throw Exception('Falha ao criar categoria.');
     }
-  } // <-- Fim do 'addCategoria'
-
-} // <-- Fim da classe 'FinanceiroService'
+  }
+}

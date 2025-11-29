@@ -60,24 +60,11 @@ class _AgendaScreenState extends State<AgendaScreen> {
       final procedimentos = await _procedimentoService.getProcedimentos();
 
       // --- FILTRO DE PROFISSIONAIS ---
-      // Lista de cargos permitidos (Certifique-se que está igual ao seu Banco de Dados/Enum)
       final cargosPermitidos = [
-        'MEDICO', 
-        'MEDICA',
-        'PSICOLOGO', 
-        'PSICOLOGA',
-        'PSIQUIATRA', 
-        'TERAPEUTA', 
-        'ENFERMEIRO', 
-        'ENFERMEIRA',
-        'DENTISTA',
-        'FISIOTERAPEUTA',
-        'NUTRICIONISTA'
+         'MEDICO', 'DENTISTA', 'PSICOLOGO', 'ENFERMEIRO', 'TERAPEUTA',
       ];
 
       final profissionaisFiltrados = todosProfissionais.where((p) {
-        // Verifica se o profissional tem papel definido e se está na lista permitida
-        // (Usa toUpperCase para evitar erro de maiúscula/minúscula)
         final papel = p.papel?.toUpperCase() ?? ''; 
         return cargosPermitidos.contains(papel);
       }).toList();
@@ -86,8 +73,7 @@ class _AgendaScreenState extends State<AgendaScreen> {
       if (mounted) {
         setState(() {
           _listaPacientes = pacientes;
-          _listaProfissionais = profissionaisFiltrados; // <-- Usa a lista filtrada
-          // Filtra apenas serviços ativos
+          _listaProfissionais = profissionaisFiltrados; 
           _listaProcedimentos = procedimentos.where((p) => p.ativo).toList(); 
           _isLoadingDropdowns = false;
         });
@@ -113,7 +99,6 @@ class _AgendaScreenState extends State<AgendaScreen> {
     Paciente? _pacienteSelecionado;
     Profissional? _profissionalSelecionado;
     
-    // Define a hora inicial
     DateTime _dataHoraInicio = _selectedDay ?? DateTime.now();
     if (_selectedDay != null && _dataHoraInicio.hour == 0) {
       _dataHoraInicio = DateTime(_selectedDay!.year, _selectedDay!.month, _selectedDay!.day, 9, 0);
@@ -122,7 +107,6 @@ class _AgendaScreenState extends State<AgendaScreen> {
     TimeOfDay _horaInicio = TimeOfDay.fromDateTime(_dataHoraInicio);
     TextEditingController _obsController = TextEditingController();
     
-    // Lista de IDs selecionados
     List<int> _procedimentosSelecionados = []; 
     
     final _formKey = GlobalKey<FormState>();
@@ -133,7 +117,6 @@ class _AgendaScreenState extends State<AgendaScreen> {
       builder: (context) {
         return StatefulBuilder(builder: (context, setModalState) {
             
-            // Helper para calcular total dinamicamente
             double _calcularTotal() {
               double total = 0;
               for (var id in _procedimentosSelecionados) {
@@ -167,7 +150,6 @@ class _AgendaScreenState extends State<AgendaScreen> {
 
             return AlertDialog(
               title: const Text('Novo Agendamento'),
-              // CORREÇÃO: SizedBox com width maxFinite evita o erro de layout
               content: SizedBox(
                 width: double.maxFinite, 
                 child: SingleChildScrollView(
@@ -177,7 +159,6 @@ class _AgendaScreenState extends State<AgendaScreen> {
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Paciente
                         DropdownButtonFormField<Paciente>(
                           value: _pacienteSelecionado, 
                           hint: const Text('Selecione um Paciente'), 
@@ -186,10 +167,7 @@ class _AgendaScreenState extends State<AgendaScreen> {
                           onChanged: (v) => setModalState(() => _pacienteSelecionado = v), 
                           validator: (v) => v == null ? 'Obrigatório' : null
                         ),
-                        
                         const SizedBox(height: 10),
-                        
-                        // Profissional
                         DropdownButtonFormField<Profissional>(
                           value: _profissionalSelecionado, 
                           hint: const Text('Selecione um Profissional'), 
@@ -198,19 +176,15 @@ class _AgendaScreenState extends State<AgendaScreen> {
                           onChanged: (v) => setModalState(() => _profissionalSelecionado = v), 
                           validator: (v) => v == null ? 'Obrigatório' : null
                         ),
-                        
                         const SizedBox(height: 16),
-                        
-                        // --- SELETOR DE PROCEDIMENTOS ---
                         const Text('Procedimentos:', style: TextStyle(fontWeight: FontWeight.bold)),
                         Container(
-                          height: 150, // Altura fixa para a lista
+                          height: 150,
                           decoration: BoxDecoration(
                             border: Border.all(color: Colors.grey.shade300), 
                             borderRadius: BorderRadius.circular(5)
                           ),
                           child: ListView(
-                            // shrinkWrap removido ou mantido false aqui pois temos altura fixa
                             children: _listaProcedimentos.map((proc) {
                               final isSelected = _procedimentosSelecionados.contains(proc.id);
                               return CheckboxListTile(
@@ -231,8 +205,6 @@ class _AgendaScreenState extends State<AgendaScreen> {
                             }).toList(),
                           ),
                         ),
-                        
-                        // Mostra o Total Estimado
                         Padding(
                           padding: const EdgeInsets.symmetric(vertical: 8.0),
                           child: Text(
@@ -240,15 +212,12 @@ class _AgendaScreenState extends State<AgendaScreen> {
                             style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.teal),
                           ),
                         ),
-                        
                         TextFormField(
                           controller: _obsController, 
                           decoration: const InputDecoration(labelText: 'Observação'), 
                           maxLines: 2
                         ),
-                        
                         const SizedBox(height: 16),
-                        
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceEvenly, 
                           children: [
@@ -277,13 +246,12 @@ class _AgendaScreenState extends State<AgendaScreen> {
                     if (_formKey.currentState!.validate()) {
                       setModalState(() => _isSaving = true);
                       try {
-                        // ENVIA OS DADOS (Incluindo a lista de IDs)
                         await _agendaService.addAgendamento(
                           pacienteId: _pacienteSelecionado!.id, 
                           usuarioId: _profissionalSelecionado!.id, 
                           data_hora_inicio: _dataHoraInicio.toIso8601String(), 
                           observacao: _obsController.text.isNotEmpty ? _obsController.text : null,
-                          procedimentoIds: _procedimentosSelecionados, // <-- ENVIA A LISTA
+                          procedimentoIds: _procedimentosSelecionados,
                         );
                         Navigator.of(context).pop();
                         _fetchAgendamentos(_selectedDay!);
@@ -302,6 +270,97 @@ class _AgendaScreenState extends State<AgendaScreen> {
             );
           });
       },
+    );
+  }
+
+  // --- MODAL FATURAMENTO (NOVO) ---
+  void _abrirFaturamento(Agendamento agendamento) {
+    final valorController = TextEditingController(text: agendamento.valorTotal.toStringAsFixed(2));
+    MetodoPagamento metodoSelecionado = agendamento.metodoPagamento ?? MetodoPagamento.PIX;
+    StatusPagamento statusSelecionado = agendamento.statusPagamento;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setStateModal) {
+          return AlertDialog(
+            title: const Text("Receber Pagamento"),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text("Paciente: ${agendamento.pacienteNome}", style: const TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 16),
+                
+                TextField(
+                  controller: valorController,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(
+                    labelText: "Valor a Receber (R\$)",
+                    border: OutlineInputBorder(),
+                    prefixText: "R\$ ",
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                DropdownButtonFormField<MetodoPagamento>(
+                  value: metodoSelecionado,
+                  decoration: const InputDecoration(labelText: "Forma de Pagamento", border: OutlineInputBorder()),
+                  items: MetodoPagamento.values.map((m) {
+                    return DropdownMenuItem(
+                      value: m, 
+                      child: Text(m.toString().split('.').last)
+                    );
+                  }).toList(),
+                  onChanged: (val) => setStateModal(() => metodoSelecionado = val!),
+                ),
+                const SizedBox(height: 16),
+
+                SwitchListTile(
+                  title: Text(
+                    statusSelecionado == StatusPagamento.PAGO ? "PAGO" : "PENDENTE",
+                    style: TextStyle(
+                      color: statusSelecionado == StatusPagamento.PAGO ? Colors.green : Colors.red,
+                      fontWeight: FontWeight.bold
+                    ),
+                  ),
+                  subtitle: const Text("Marcar como pago gera receita no financeiro"),
+                  value: statusSelecionado == StatusPagamento.PAGO,
+                  activeColor: Colors.green,
+                  onChanged: (val) {
+                    setStateModal(() {
+                      statusSelecionado = val ? StatusPagamento.PAGO : StatusPagamento.PENDENTE;
+                    });
+                  },
+                )
+              ],
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancelar")),
+              ElevatedButton.icon(
+                icon: const Icon(Icons.check),
+                label: const Text("SALVAR & FATURAR"),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                onPressed: () async {
+                  final valor = double.tryParse(valorController.text.replaceAll(',', '.')) ?? 0.0;
+                  try {
+                    await Provider.of<AgendaService>(context, listen: false).updateAgendamento(
+                      agendamentoId: agendamento.id,
+                      statusPagamento: statusSelecionado,
+                      metodoPagamento: metodoSelecionado,
+                      valorPago: valor,
+                    );
+                    Navigator.pop(context);
+                    _fetchAgendamentos(_selectedDay!); 
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Pagamento registrado!")));
+                  } catch (e) {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erro: $e")));
+                  }
+                },
+              )
+            ],
+          );
+        }
+      ),
     );
   }
 
@@ -326,7 +385,6 @@ class _AgendaScreenState extends State<AgendaScreen> {
                   Text('Paciente: ${agendamento.pacienteNome}', style: const TextStyle(fontWeight: FontWeight.bold)),
                   const SizedBox(height: 10),
                   
-                  // Mostra os procedimentos e valor total (Somente leitura aqui)
                   if (agendamento.procedimentosNomes.isNotEmpty) ...[
                     const Align(alignment: Alignment.centerLeft, child: Text("Procedimentos:", style: TextStyle(fontSize: 12, color: Colors.grey))),
                     ...agendamento.procedimentosNomes.map((p) => Align(alignment: Alignment.centerLeft, child: Text("• $p", style: const TextStyle(fontSize: 13)))),
@@ -439,57 +497,69 @@ class _AgendaScreenState extends State<AgendaScreen> {
       ],
     );
   }
+  
 
   Widget _buildAgendamentoCard(Agendamento agendamento) {
     final podeEditar = _authService.isAdmin || _authService.isGestor || _authService.isAtendente;
     final pacienteNome = agendamento.pacienteNome ?? 'Paciente Desconhecido';
 
-    // Monta string de serviços (ex: "Consulta + Exame")
     String servicosStr = "";
     if (agendamento.procedimentosNomes.isNotEmpty) {
       servicosStr = agendamento.procedimentosNomes.join(" + ");
     }
+    
+    // Define a cor do ícone de pagamento
+    final isPago = agendamento.statusPagamento == StatusPagamento.PAGO;
 
     return Card(
       elevation: 2,
       margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-      child: ListTile(
-        onTap: podeEditar ? () => _showEditAgendamentoDialog(agendamento) : null,
-        leading: CircleAvatar(backgroundColor: agendamento.status.cor, child: const Icon(Icons.calendar_month, color: Colors.white)),
-        title: Text(pacienteNome, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 4),
-            Row(children: [
-                Icon(Icons.access_time, size: 14, color: Colors.grey[600]), const SizedBox(width: 4),
-                Text(DateFormat('HH:mm').format(agendamento.dataHora), style: const TextStyle(fontWeight: FontWeight.bold)),
-                const SizedBox(width: 10),
-                Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: agendamento.status.cor.withOpacity(0.1), borderRadius: BorderRadius.circular(12), border: Border.all(color: agendamento.status.cor)), child: Text(agendamento.status.nomeFormatado, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: agendamento.status.cor))),
-            ]),
-            
-            // --- EXIBE OS SERVIÇOS E VALOR NO CARD ---
-            if (servicosStr.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Text('Serviços: $servicosStr', style: const TextStyle(color: Colors.black87)),
+      child: Column(
+        children: [
+          ListTile(
+            onTap: podeEditar ? () => _showEditAgendamentoDialog(agendamento) : null,
+            leading: CircleAvatar(backgroundColor: agendamento.status.cor, child: const Icon(Icons.calendar_month, color: Colors.white)),
+            title: Text(pacienteNome, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 4),
+                Row(children: [
+                    Icon(Icons.access_time, size: 14, color: Colors.grey[600]), const SizedBox(width: 4),
+                    Text(DateFormat('HH:mm').format(agendamento.dataHora), style: const TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(width: 10),
+                    Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: agendamento.status.cor.withOpacity(0.1), borderRadius: BorderRadius.circular(12), border: Border.all(color: agendamento.status.cor)), child: Text(agendamento.status.nomeFormatado, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: agendamento.status.cor))),
+                ]),
+                
+                if (servicosStr.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text('Serviços: $servicosStr', style: const TextStyle(color: Colors.black87)),
+                  ),
+                 if (agendamento.valorTotal > 0)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text('Total: R\$ ${agendamento.valorTotal.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.teal)),
+                  ),
+                
+                if (agendamento.nomePrestador != null) Padding(padding: const EdgeInsets.only(top: 4), child: Text('Profissional: ${agendamento.nomePrestador}')),
+                if (agendamento.observacao != null && agendamento.observacao!.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 4), child: Text('Obs: ${agendamento.observacao}', style: const TextStyle(fontStyle: FontStyle.italic))),
+              ],
+            ),
+            // Ícone de status de pagamento rápido na lateral
+            trailing: IconButton(
+              icon: Icon(
+                Icons.attach_money,
+                color: isPago ? Colors.green : Colors.grey[400]
               ),
-             if (agendamento.valorTotal > 0)
-              Padding(
-                padding: const EdgeInsets.only(top: 2),
-                child: Text('Total: R\$ ${agendamento.valorTotal.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.teal)),
-              ),
-            // ------------------------------------------
-            
-            if (agendamento.nomePrestador != null) Padding(padding: const EdgeInsets.only(top: 4), child: Text('Profissional: ${agendamento.nomePrestador}')),
-            if (agendamento.observacao != null && agendamento.observacao!.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 4), child: Text('Obs: ${agendamento.observacao}', style: const TextStyle(fontStyle: FontStyle.italic))),
-          ],
-        ),
-        isThreeLine: true,
+              onPressed: () => _abrirFaturamento(agendamento),
+            ),
+          ),
+        ],
       ),
     );
   }
-
+  
   @override
   Widget build(BuildContext context) {
     final width = MediaQuery.of(context).size.width;

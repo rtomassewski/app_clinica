@@ -4,43 +4,42 @@ publish_to: 'none'
 version: 1.0.0+1
 
 environment:
-  sdk: '>=3.0.0 <4.0.0' # (Atualizei para um intervalo mais moderno, mas pode manter o seu)
+  sdk: '>=3.0.0 <4.0.0'
 
 dependencies:
   flutter:
     sdk: flutter
 
-  # Pacotes que adicionamos
+  # Pacotes
   http: ^1.1.0
   flutter_secure_storage: ^9.0.0
   provider: ^6.1.1
-  intl: ^0.18.1 # (Atualizei para uma versão estável mais comum)
-  table_calendar: ^3.0.9 # (Atualizei para uma versão estável mais comum)
-  path_provider: ^2.1.3 # (Atualizei)
-  open_file: ^3.3.2 # (Atualizei)
-
-  # Pacote padrão
+  intl: ^0.18.1
+  table_calendar: ^3.0.9
+  path_provider: ^2.1.3
+  open_file: ^3.3.2
   cupertino_icons: ^1.0.2
+  google_fonts: ^6.1.0
 
-# --- CORREÇÃO DE INDENTAÇÃO AQUI ---
 dev_dependencies:
   flutter_test:
     sdk: flutter
   
   flutter_launcher_icons: ^0.13.1
   flutter_lints: ^4.0.0
-# --- FIM DA CORREÇÃO ---
 
-# --- CORREÇÃO DE INDENTAÇÃO AQUI ---
-# Este bloco deve estar no nível raiz (sem espaços à esquerda)
+# Configuração do Ícone do App (Opcional, se você usar o flutter_launcher_icons)
 flutter_launcher_icons:
   android: true
   ios: true
   image_path: "assets/icon/icon.png"
   min_sdk_android: 21
-# --- FIM DA CORREÇÃO ---
 
+# --- AQUI ESTAVA O ERRO ---
+# A palavra 'flutter:' deve estar encostada na margem esquerda
 flutter:
   uses-material-design: true
-
-  # (O resto do seu ficheiro flutter: ... assets: ... fonts: ... etc.)
+  
+  # Aqui definimos onde estão as imagens
+  assets:
+    - assets/images/

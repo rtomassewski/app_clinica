@@ -36,6 +36,15 @@ class _GestaoScreenState extends State<GestaoScreen> {
   Future<void> _carregarPapeisReais() async {
     try {
       final papeis = await Provider.of<GestaoService>(context, listen: false).getPapeis();
+      
+      // --- DEBUG: IMPRIMIR NO CONSOLE ---
+      print("--- LISTA DE PAPÉIS DO BANCO ---");
+      for (var p in papeis) {
+        print("ID: ${p.id}  -  NOME: ${p.nome}");
+      }
+      print("--------------------------------");
+      // ----------------------------------
+
       if (mounted) {
         setState(() {
           _papeisDisponiveis = papeis;

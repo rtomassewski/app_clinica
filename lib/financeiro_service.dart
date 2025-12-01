@@ -54,6 +54,10 @@ class TransacaoFinanceira {
   final DateTime? dataPagamento;
   final String categoriaNome;
   final String? pacienteNome;
+  
+  // --- CAMPO NOVO ADICIONADO ---
+  final int? usuarioBaixaId; // ID de quem recebeu/pagou
+  // -----------------------------
 
   TransacaoFinanceira({
     required this.id,
@@ -64,6 +68,7 @@ class TransacaoFinanceira {
     this.dataPagamento,
     required this.categoriaNome,
     this.pacienteNome,
+    this.usuarioBaixaId, // <--- Adicionado no construtor
   });
 
   factory TransacaoFinanceira.fromJson(Map<String, dynamic> json) {
@@ -78,13 +83,17 @@ class TransacaoFinanceira {
           : null,
       categoriaNome: json['categoria']?['nome'] ?? 'Geral',
       pacienteNome: json['paciente']?['nome_completo'],
+      
+      // --- LÊ O NOVO CAMPO DO JSON ---
+      // O backend deve retornar 'usuarioBaixaId' (conforme o schema do Prisma)
+      usuarioBaixaId: json['usuarioBaixaId'], 
+      // -------------------------------
     );
   }
 }
 
-// --- O SERVIÇO (ATUALIZADO) ---
+// --- O SERVIÇO ---
 
-// Adicionei 'with ChangeNotifier' para a tela saber quando o caixa abriu/fechou
 class FinanceiroService with ChangeNotifier {
   final AuthService _authService;
   FinanceiroService(this._authService);
@@ -94,9 +103,8 @@ class FinanceiroService with ChangeNotifier {
   CaixaDiario? get caixaAtual => _caixaAtual;
   bool get isCaixaAberto => _caixaAtual?.status == 'ABERTO';
 
-  // --- MÉTODOS DE CAIXA (NOVO) ---
+  // --- MÉTODOS DE CAIXA ---
 
-  // Verifica se existe um caixa aberto hoje para este usuário
   Future<void> verificarStatusCaixa() async {
     final token = await _authService.getToken();
     if (token == null) return;
@@ -106,7 +114,6 @@ class FinanceiroService with ChangeNotifier {
       final response = await http.get(url, headers: {'Authorization': 'Bearer $token'});
 
       if (response.statusCode == 200) {
-        // CORREÇÃO: Verifica se o corpo não está vazio antes de fazer o decode
         if (response.body.isNotEmpty && response.body != "null" && response.body != "") {
           final data = json.decode(response.body);
           _caixaAtual = CaixaDiario.fromJson(data);
@@ -119,7 +126,6 @@ class FinanceiroService with ChangeNotifier {
       notifyListeners(); 
     } catch (e) {
       print("Erro ao verificar status do caixa: $e");
-      // Em caso de erro, assumimos fechado para evitar travamento
       _caixaAtual = null;
       notifyListeners();
     }
@@ -169,7 +175,7 @@ class FinanceiroService with ChangeNotifier {
     }
   }
 
-  // --- MÉTODOS FINANCEIROS (MANTIDOS E MELHORADOS) ---
+  // --- MÉTODOS FINANCEIROS ---
 
   Future<List<CategoriaFinanceira>> getCategorias() async {
     final token = await _authService.getToken();
@@ -195,7 +201,6 @@ class FinanceiroService with ChangeNotifier {
 
     if (response.statusCode == 200) {
       final List<dynamic> jsonList = json.decode(response.body);
-      // Ordena por vencimento (mais recente primeiro)
       final lista = jsonList.map((json) => TransacaoFinanceira.fromJson(json)).toList();
       lista.sort((a, b) => b.dataVencimento.compareTo(a.dataVencimento));
       return lista;
@@ -204,7 +209,6 @@ class FinanceiroService with ChangeNotifier {
     }
   }
 
-  // POST (COM RECORRÊNCIA)
   Future<void> addTransacao({
     required String descricao,
     required double valor,
@@ -212,7 +216,6 @@ class FinanceiroService with ChangeNotifier {
     required DateTime dataVencimento,
     required int categoriaId,
     int? pacienteId,
-    // Novos Argumentos para Recorrência
     bool repetir = false,
     int parcelas = 1,
   }) async {
@@ -221,20 +224,15 @@ class FinanceiroService with ChangeNotifier {
 
     final url = Uri.parse('$baseUrl/transacoes-financeiras');
 
-    // Se não for repetir, faz um loop de 1 volta só
     int qtd = repetir ? parcelas : 1;
 
     for (int i = 0; i < qtd; i++) {
-      // Calcula a data: adiciona 'i' meses à data original
-      // Ex: i=0 (hoje), i=1 (mês que vem), etc.
       DateTime dataParcela = DateTime(
         dataVencimento.year,
         dataVencimento.month + i,
         dataVencimento.day,
       );
 
-      // Ajusta a descrição para saber qual parcela é
-      // Ex: "Tratamento Ortodôntico (1/12)"
       String descFinal = descricao;
       if (repetir && parcelas > 1) {
         descFinal = "$descricao (${i + 1}/$parcelas)";
@@ -253,7 +251,6 @@ class FinanceiroService with ChangeNotifier {
           'data_vencimento': dataParcela.toIso8601String(),
           'categoriaId': categoriaId,
           'pacienteId': pacienteId,
-          // 'status' nasce como PENDENTE por padrão no banco
         }),
       );
 
@@ -263,11 +260,7 @@ class FinanceiroService with ChangeNotifier {
     }
   }
 
-  // PATCH (VALIDA CAIXA)
   Future<void> marcarComoPaga(int transacaoId) async {
-    // 1. Validação de Segurança: Só recebe se o caixa estiver aberto
-    // (Opcional: Você pode comentar isso se quiser permitir receber mesmo com caixa fechado,
-    // mas em sistemas rigorosos isso é bloqueado)
     if (!isCaixaAberto) {
       throw Exception('Você precisa ABRIR O CAIXA antes de movimentar dinheiro.');
     }
@@ -292,7 +285,6 @@ class FinanceiroService with ChangeNotifier {
     }
   }
 
-  // POST CATEGORIA
   Future<void> addCategoria({
     required String nome,
     required TipoTransacao tipo,

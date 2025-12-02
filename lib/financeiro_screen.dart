@@ -1,4 +1,5 @@
 // lib/financeiro_screen.dart
+import 'package:app_clinica/notificacao_service.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
@@ -138,6 +139,11 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
         actions: [
           IconButton(icon: const Icon(Icons.picture_as_pdf), onPressed: _exportarRelatorio),
           IconButton(icon: const Icon(Icons.category_outlined), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (c) => const CategoriasScreen()))),
+          IconButton(
+            icon: const Icon(Icons.notifications_active_outlined),
+            tooltip: 'Configurar Lembretes',
+            onPressed: _showConfigNotificacao,
+          ),
         ],
       ),
       body: RefreshIndicator(
@@ -572,5 +578,47 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
       await file.writeAsBytes(pdfBytes);
       await OpenFile.open(filePath);
     } catch (e) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e'))); }
+  }
+  void _showConfigNotificacao() async {
+    final notifService = Provider.of<NotificacaoService>(context, listen: false);
+    String atual = await notifService.getFrequencia();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Configurar Lembretes"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text("Com que frequência deseja ser lembrado das contas pendentes?"),
+            const SizedBox(height: 20),
+            ListTile(
+              title: const Text("Diariamente (Hoje)"),
+              leading: Radio(value: 'DIARIO', groupValue: atual, onChanged: (v) {
+                notifService.setFrequencia(v.toString());
+                Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Definido para Diário")));
+              }),
+            ),
+            ListTile(
+              title: const Text("Semanalmente (Próx. 7 dias)"),
+              leading: Radio(value: 'SEMANAL', groupValue: atual, onChanged: (v) {
+                notifService.setFrequencia(v.toString());
+                Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Definido para Semanal")));
+              }),
+            ),
+            ListTile(
+              title: const Text("Desativar"),
+              leading: Radio(value: 'OFF', groupValue: atual, onChanged: (v) {
+                notifService.setFrequencia(v.toString());
+                Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Notificações Desativadas")));
+              }),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

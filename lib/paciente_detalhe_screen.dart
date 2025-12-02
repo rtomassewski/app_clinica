@@ -1113,4 +1113,37 @@ class _TabComportamentoState extends State<_TabComportamento> {
           : null,
     );
   }
+  void _showAdicionarCreditoDialog(BuildContext context, int pacienteId) {
+  final valorCtrl = TextEditingController();
+  
+  showDialog(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text("Adicionar Crédito"),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text("Este valor entrará no caixa como RECEITA e ficará disponível para o paciente gastar na loja."),
+          const SizedBox(height: 10),
+          TextField(
+            controller: valorCtrl,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(labelText: "Valor (R\$)", prefixText: "R\$ "),
+          )
+        ],
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Cancelar")),
+        ElevatedButton(
+          onPressed: () async {
+            // Chamar API: LojaService.adicionarCredito(pacienteId, valor)
+            Navigator.pop(ctx);
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Crédito adicionado!")));
+          },
+          child: const Text("CONFIRMAR"),
+        )
+      ],
+    )
+  );
+}
 }

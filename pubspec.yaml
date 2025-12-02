@@ -9,6 +9,9 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_local_notifications: ^17.0.0
+  timezone: ^0.9.2 # Para lidar com datas/agendamento
+  shared_preferences: ^2.2.2 # Para salvar a preferência do usuário
 
   # Pacotes
   http: ^1.1.0

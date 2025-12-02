@@ -1,67 +1,52 @@
 // lib/impressoes_service.dart
-import 'dart:typed_data'; // Para lidar com os bytes do PDF
+import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'auth_service.dart';
-import 'api_config.dart';
+import 'api_config.dart'; // Certifique-se que o baseUrl vem daqui
 
 class ImpressoesService {
   final AuthService _authService;
+
   ImpressoesService(this._authService);
 
-  // GET /impressoes/paciente/:id/prontuario
+  // --- 1. PRONTUÁRIO (Agora com o nome correto: gerarProntuarioPdf) ---
   Future<Uint8List> gerarProntuarioPdf(int pacienteId) async {
     final token = await _authService.getToken();
-    if (token == null) throw Exception('Não autenticado');
-
+    
+    // Rota que definimos no Backend: /impressoes/paciente/:id/prontuario
     final url = Uri.parse('$baseUrl/impressoes/paciente/$pacienteId/prontuario');
 
-    try {
-      final response = await http.get(
-        url,
-        headers: {
-          'Authorization': 'Bearer $token',
-        },
-      );
+    final response = await http.get(
+      url,
+      headers: {'Authorization': 'Bearer $token'},
+    );
 
-      if (response.statusCode == 200) {
-        // 1. Sucesso: Retorna o corpo da resposta como bytes
-        return response.bodyBytes;
-      } else {
-        // 2. Falha (403, 404, 500)
-        throw Exception('Falha ao gerar o PDF. Status: ${response.statusCode}');
-      }
-    } catch (e) {
-      // 3. Erro de rede
-      throw Exception('Erro de conexão: $e');
+    if (response.statusCode == 200) {
+      return response.bodyBytes; // O PDF em si
+    } else {
+      throw Exception('Erro ao gerar prontuário: ${response.statusCode}');
     }
   }
-  Future<Uint8List> gerarRelatorioFinanceiro({DateTime? inicio, DateTime? fim}) async {
+
+  // --- 2. RELATÓRIO FINANCEIRO ---
+  Future<Uint8List> gerarRelatorioFinanceiro({required DateTime inicio, required DateTime fim}) async {
     final token = await _authService.getToken();
-    if (token == null) throw Exception('Não autenticado');
+    
+    final inicioStr = inicio.toIso8601String();
+    final fimStr = fim.toIso8601String();
 
-    // Monta a URL com Query Params
-    String queryString = '';
-    if (inicio != null && fim != null) {
-      queryString = '?inicio=${inicio.toIso8601String()}&fim=${fim.toIso8601String()}';
-    }
+    // Rota que definimos no Backend: /impressoes/financeiro
+    final url = Uri.parse('$baseUrl/impressoes/financeiro?inicio=$inicioStr&fim=$fimStr');
 
-    final url = Uri.parse('$baseUrl/impressoes/financeiro$queryString');
+    final response = await http.get(
+      url,
+      headers: {'Authorization': 'Bearer $token'},
+    );
 
-    try {
-      final response = await http.get(
-        url,
-        headers: {
-          'Authorization': 'Bearer $token',
-        },
-      );
-
-      if (response.statusCode == 200) {
-        return response.bodyBytes;
-      } else {
-        throw Exception('Falha ao gerar relatório financeiro. Status: ${response.statusCode}');
-      }
-    } catch (e) {
-      throw Exception('Erro de conexão: $e');
+    if (response.statusCode == 200) {
+      return response.bodyBytes;
+    } else {
+      throw Exception('Erro ao gerar relatório financeiro: ${response.statusCode}');
     }
   }
 }

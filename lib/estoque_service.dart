@@ -1,147 +1,166 @@
 // lib/estoque_service.dart
 import 'dart:convert';
+import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'auth_service.dart';
 import 'api_config.dart';
 
-// (Este enum precisa bater com o do Prisma)
-enum UnidadeMedida {
-  UNIDADE,
-  CAIXA,
-  FRASCO,
-  ML
-}
-
-// Modelo para a lista principal (GET /produtos)
-class ProdutoEstoque {
+class Produto {
   final int id;
   final String nome;
-  final int quantidadeEstoque;
+  final String? descricao;
+  final String unidadeMedida;
+  final int estoque;
   final int estoqueMinimo;
-  final UnidadeMedida unidadeMedida;
+  final double valor;
 
-  ProdutoEstoque({
+  Produto({
     required this.id,
     required this.nome,
-    required this.quantidadeEstoque,
-    required this.estoqueMinimo,
+    this.descricao,
     required this.unidadeMedida,
+    required this.estoque,
+    required this.estoqueMinimo,
+    required this.valor,
   });
 
-  static UnidadeMedida _parseUnidade(String? unidade) {
-    switch (unidade) {
-      case 'CAIXA':
-        return UnidadeMedida.CAIXA;
-      case 'FRASCO':
-        return UnidadeMedida.FRASCO;
-      case 'ML':
-        return UnidadeMedida.ML;
-      case 'UNIDADE':
-      default:
-        return UnidadeMedida.UNIDADE;
+  factory Produto.fromJson(Map<String, dynamic> json) {
+    num parseNum(dynamic value) {
+      if (value is num) return value;
+      if (value is String) return double.tryParse(value.replaceAll(',', '.')) ?? 0;
+      return 0;
     }
-  }
 
-  factory ProdutoEstoque.fromJson(Map<String, dynamic> json) {
-    return ProdutoEstoque(
-      id: json['id'],
-      nome: json['nome'],
-      quantidadeEstoque: json['quantidade_estoque'],
-      estoqueMinimo: json['estoque_minimo'],
-      unidadeMedida: _parseUnidade(json['unidade_medida']),
+    return Produto(
+      id: (json['id'] as int?) ?? 0,
+      nome: (json['nome'] as String?) ?? 'Produto Sem Nome',
+      descricao: json['descricao'] as String?,
+      unidadeMedida: (json['unidade_medida'] as String?) ?? 'UNIDADE',
+      
+      estoque: parseNum(json['estoque'] ?? json['quantidade_estoque']).toInt(),
+      estoqueMinimo: parseNum(json['estoque_minimo']).toInt(),
+      valor: parseNum(json['valor']).toDouble(), 
     );
   }
 }
 
-// --- O SERVIÇO ---
+class EstoqueService with ChangeNotifier {
+  final AuthService authService;
+  List<Produto> _produtos = [];
 
-class EstoqueService {
-  final AuthService _authService;
-  EstoqueService(this._authService);
+  EstoqueService(this.authService);
 
-  // GET /produtos
-  Future<List<ProdutoEstoque>> getProdutos() async {
-    final token = await _authService.getToken();
-    if (token == null) throw Exception('Não autenticado');
+  List<Produto> get produtos => _produtos;
 
+  Future<List<Produto>> getProdutos() async {
+    final token = await authService.getToken();
     final url = Uri.parse('$baseUrl/produtos');
-    final response = await http.get(url, headers: {'Authorization': 'Bearer $token'});
 
-    if (response.statusCode == 200) {
-      final List<dynamic> jsonList = json.decode(response.body);
-      return jsonList.map((json) => ProdutoEstoque.fromJson(json)).toList();
-    } else {
-      throw Exception('Falha ao carregar produtos.');
+    try {
+      final response = await http.get(
+        url,
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> dados = jsonDecode(response.body);
+        _produtos = dados.map((json) => Produto.fromJson(json)).toList();
+        return _produtos;
+      } else {
+        print('Erro ao buscar produtos: ${response.statusCode}');
+        throw Exception('Falha ao carregar produtos: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Erro getProdutos: $e');
+      rethrow;
     }
   }
 
-  // POST /produtos (Criar novo item no catálogo)
-  Future<void> addProduto({
-    required String nome,
-    required UnidadeMedida unidade,
-    int? estoqueMinimo,
+  Future<bool> addProduto({
+    required String nome, 
+    required String unidade, 
+    required int estoqueMinimo,
+    required double valor, 
+    String? descricao,
   }) async {
-    final token = await _authService.getToken();
-    if (token == null) throw Exception('Não autenticado');
-
+    final token = await authService.getToken();
     final url = Uri.parse('$baseUrl/produtos');
-    final response = await http.post(
-      url,
-      headers: {
-        'Content-Type': 'application/json; charset=UTF-8',
-        'Authorization': 'Bearer $token',
-      },
-      body: json.encode({
-        'nome': nome,
-        'unidade_medida': unidade.name, // "UNIDADE", "CAIXA", etc.
-        'estoque_minimo': estoqueMinimo,
-      }),
-    );
 
-    if (response.statusCode != 201) {
-      throw Exception('Falha ao criar produto.');
+    try {
+      final body = jsonEncode({
+        "nome": nome,
+        "descricao": descricao, 
+        "unidade_medida": unidade,
+        "estoque_minimo": estoqueMinimo,
+        "valor": valor, 
+      });
+
+      final response = await http.post(
+        url,
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: body,
+      );
+
+      if (response.statusCode == 201) {
+        return true; 
+      } else {
+        print('Erro ao criar produto: ${response.body}');
+        final erroMsg = jsonDecode(response.body)['message'] ?? 'Erro desconhecido.';
+        throw Exception('Erro ${response.statusCode}: $erroMsg');
+      }
+    } catch (e) {
+      print('Erro addProduto: $e');
+      rethrow;
     }
   }
 
-  // POST /entradas-estoque (Dar entrada)
-  Future<void> addEntradaEstoque({
+  // --- NOVO MÉTODO: REGISTRA ENTRADA DE ESTOQUE ---
+  Future<bool> addEntradaEstoque({
     required int produtoId,
     required int quantidade,
     String? lote,
-    String? dataValidade, // Formato "AAAA-MM-DD"
+    String? dataValidade,
   }) async {
-    final token = await _authService.getToken();
-    if (token == null) throw Exception('Não autenticado');
-
+    final token = await authService.getToken();
+    // Endpoint do Backend: POST /entradas-estoque
     final url = Uri.parse('$baseUrl/entradas-estoque');
-    
-    // Converte a data (se houver) para o formato ISO
-    String? dataValidadeISO;
-    if (dataValidade != null && dataValidade.isNotEmpty) {
-      // Pequena validação para garantir que a data está em formato AAAA-MM-DD
-      try {
-        dataValidadeISO = DateTime.parse(dataValidade).toIso8601String();
-      } catch (e) {
-        throw Exception('Formato de data de validade inválido. Use AAAA-MM-DD.');
+
+    // Mapeia os dados do modal para o DTO do Backend
+    final body = jsonEncode({
+      "produtoId": produtoId,
+      "quantidade": quantidade,
+      "lote": lote,
+      // O backend espera AAAA-MM-DD
+      "data_validade": dataValidade, 
+    });
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: body,
+      );
+
+      if (response.statusCode == 201) {
+        // A transação foi um sucesso no Backend
+        return true;
+      } else {
+        print('Erro ao registrar entrada: ${response.body}');
+        final erroMsg = jsonDecode(response.body)['message'] ?? 'Erro desconhecido ao dar entrada.';
+        throw Exception('Erro ${response.statusCode}: $erroMsg');
       }
-    }
-
-    final response = await http.post(
-      url,
-      headers: {
-        'Content-Type': 'application/json; charset=UTF-8',
-        'Authorization': 'Bearer $token',
-      },
-      body: json.encode({
-        'produtoId': produtoId,
-        'quantidade': quantidade,
-        'lote': lote,
-        'data_validade': dataValidadeISO,
-      }),
-    );
-
-    if (response.statusCode != 201) {
-      throw Exception('Falha ao dar entrada no estoque.');
+    } catch (e) {
+      print('Erro addEntradaEstoque: $e');
+      rethrow;
     }
   }
 }

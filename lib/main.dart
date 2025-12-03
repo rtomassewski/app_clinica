@@ -25,6 +25,7 @@ import 'agenda_service.dart';
 import 'procedimento_service.dart';
 import 'evolucao_service.dart';
 import 'notificacao_service.dart';
+import 'loja_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -72,6 +73,10 @@ void main() async {
   create: (context) => EstoqueService(Provider.of<AuthService>(context, listen: false)),
   update: (_, auth, previous) => EstoqueService(auth),
 ),
+ChangeNotifierProxyProvider<AuthService, LojaService>(
+          create: (context) => LojaService(Provider.of<AuthService>(context, listen: false)),
+          update: (_, auth, previous) => LojaService(auth),
+        ),
         ProxyProvider<AuthService, ImpressoesService>(
           update: (_, auth, __) => ImpressoesService(auth),
         ),

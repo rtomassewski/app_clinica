@@ -66,13 +66,16 @@ class Paciente {
   final String nomeCompleto;
   final String? nomeSocial;
   final String status;
-  Paciente({ required this.id, required this.nomeCompleto, this.nomeSocial, required this.status });
+  final double saldo;
+  Paciente({ required this.id, required this.nomeCompleto, this.nomeSocial, required this.status, required this.saldo, });
   factory Paciente.fromJson(Map<String, dynamic> json) {
+    final num saldoApi = json['saldo'] as num? ?? 0.0;
     return Paciente(
       id: json['id'],
       nomeCompleto: json['nome_completo'],
       nomeSocial: json['nome_social'],
       status: json['status'],
+      saldo: saldoApi.toDouble(),
     );
   }
 }
@@ -82,6 +85,7 @@ class PacienteDetalhado {
   final String nomeCompleto;
   final String? nomeSocial;
   final String cpf;
+  
   final String nomeResponsavel;
   final String telefoneResponsavel;
   final DateTime dataNascimento;

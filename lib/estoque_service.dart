@@ -13,6 +13,8 @@ class Produto {
   final int estoque;
   final int estoqueMinimo;
   final double valor;
+  // --- NOVO CAMPO: TIPO ---
+  final String tipo;
 
   Produto({
     required this.id,
@@ -22,6 +24,7 @@ class Produto {
     required this.estoque,
     required this.estoqueMinimo,
     required this.valor,
+    required this.tipo,
   });
 
   factory Produto.fromJson(Map<String, dynamic> json) {
@@ -40,6 +43,9 @@ class Produto {
       estoque: parseNum(json['estoque'] ?? json['quantidade_estoque']).toInt(),
       estoqueMinimo: parseNum(json['estoque_minimo']).toInt(),
       valor: parseNum(json['valor']).toDouble(), 
+      
+      // --- LÊ O TIPO (Se vier nulo, assume FARMACIA) ---
+      tipo: json['tipo'] ?? 'FARMACIA',
     );
   }
 }
@@ -52,9 +58,13 @@ class EstoqueService with ChangeNotifier {
 
   List<Produto> get produtos => _produtos;
 
+  // --- BUSCAR PRODUTOS (FILTRADO POR FARMACIA) ---
   Future<List<Produto>> getProdutos() async {
     final token = await authService.getToken();
-    final url = Uri.parse('$baseUrl/produtos');
+    
+    // --- CORREÇÃO: Adicionado filtro ?tipo=FARMACIA ---
+    // Isso impede que itens da Loja apareçam na tela de Estoque
+    final url = Uri.parse('$baseUrl/produtos?tipo=FARMACIA');
 
     try {
       final response = await http.get(
@@ -68,6 +78,7 @@ class EstoqueService with ChangeNotifier {
       if (response.statusCode == 200) {
         final List<dynamic> dados = jsonDecode(response.body);
         _produtos = dados.map((json) => Produto.fromJson(json)).toList();
+        notifyListeners(); // Atualiza a tela
         return _produtos;
       } else {
         print('Erro ao buscar produtos: ${response.statusCode}');
@@ -79,6 +90,7 @@ class EstoqueService with ChangeNotifier {
     }
   }
 
+  // --- ADICIONAR PRODUTO (MARCADO COMO FARMACIA) ---
   Future<bool> addProduto({
     required String nome, 
     required String unidade, 
@@ -95,7 +107,10 @@ class EstoqueService with ChangeNotifier {
         "descricao": descricao, 
         "unidade_medida": unidade,
         "estoque_minimo": estoqueMinimo,
-        "valor": valor, 
+        "valor": valor,
+        
+        // --- CORREÇÃO: Força o tipo FARMACIA ---
+        "tipo": "FARMACIA",
       });
 
       final response = await http.post(
@@ -108,6 +123,8 @@ class EstoqueService with ChangeNotifier {
       );
 
       if (response.statusCode == 201) {
+        // Recarrega a lista para mostrar o novo item
+        await getProdutos(); 
         return true; 
       } else {
         print('Erro ao criar produto: ${response.body}');
@@ -120,7 +137,7 @@ class EstoqueService with ChangeNotifier {
     }
   }
 
-  // --- NOVO MÉTODO: REGISTRA ENTRADA DE ESTOQUE ---
+  // --- REGISTRA ENTRADA DE ESTOQUE (Mantido Igual) ---
   Future<bool> addEntradaEstoque({
     required int produtoId,
     required int quantidade,
@@ -128,15 +145,12 @@ class EstoqueService with ChangeNotifier {
     String? dataValidade,
   }) async {
     final token = await authService.getToken();
-    // Endpoint do Backend: POST /entradas-estoque
     final url = Uri.parse('$baseUrl/entradas-estoque');
 
-    // Mapeia os dados do modal para o DTO do Backend
     final body = jsonEncode({
       "produtoId": produtoId,
       "quantidade": quantidade,
       "lote": lote,
-      // O backend espera AAAA-MM-DD
       "data_validade": dataValidade, 
     });
 
@@ -151,7 +165,8 @@ class EstoqueService with ChangeNotifier {
       );
 
       if (response.statusCode == 201) {
-        // A transação foi um sucesso no Backend
+        // Atualiza a lista para refletir a nova quantidade
+        await getProdutos();
         return true;
       } else {
         print('Erro ao registrar entrada: ${response.body}');

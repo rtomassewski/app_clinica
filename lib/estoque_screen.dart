@@ -1,13 +1,10 @@
 // lib/estoque_screen.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'estoque_service.dart';
+import 'estoque_service.dart'; // Importa a classe Produto e o Service
 
-// O tipo de dado deve ser ajustado para a sua classe real no Service.
-// Assumindo que Produto é a classe de modelo, vamos usar dynamic para o Future
-// para evitar erros de compilação sem ver o código completo do Service.
-class ProdutoEstoque {} // Placeholder para evitar erro de referência
-enum UnidadeMedida { UNIDADE, CAIXA, FRASCO, ML } // Placeholder para o Enum
+// Enum para o Dropdown (Pode manter aqui ou mover para um arquivo de utils)
+enum UnidadeMedida { UNIDADE, CAIXA, FRASCO, ML }
 
 class EstoqueScreen extends StatefulWidget {
   const EstoqueScreen({Key? key}) : super(key: key);
@@ -17,9 +14,8 @@ class EstoqueScreen extends StatefulWidget {
 }
 
 class _EstoqueScreenState extends State<EstoqueScreen> {
-  // Alterei o tipo para Future<List<dynamic>> para maior compatibilidade.
-  // O correto seria Future<List<Produto>> se a classe estivesse aqui.
-  late Future<List<dynamic>> _produtosFuture; 
+  // Agora usamos a tipagem forte da classe Produto
+  late Future<List<Produto>> _produtosFuture; 
 
   @override
   void initState() {
@@ -29,12 +25,12 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
 
   void _refreshProdutos() {
     setState(() {
-      _produtosFuture =
-          Provider.of<EstoqueService>(context, listen: false).getProdutos();
+      // O getProdutos do Service já traz apenas itens com tipo="FARMACIA"
+      _produtosFuture = Provider.of<EstoqueService>(context, listen: false).getProdutos();
     });
   }
 
-  // --- MODAL 1: CRIAR NOVO PRODUTO (CORRIGIDO) ---
+  // --- MODAL 1: CRIAR NOVO PRODUTO ---
   Future<void> _showAddProdutoDialog() async {
     final _formKey = GlobalKey<FormState>();
     final _nomeController = TextEditingController();
@@ -49,7 +45,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
         return StatefulBuilder(
           builder: (context, setModalState) {
             return AlertDialog(
-              title: const Text('Novo Produto no Catálogo'),
+              title: const Text('Novo Produto (Farmácia)'),
               content: Form(
                 key: _formKey,
                 child: SingleChildScrollView(
@@ -59,9 +55,10 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
                       TextFormField(
                         controller: _nomeController,
                         autofocus: true,
-                        decoration: const InputDecoration(labelText: 'Nome do Produto*'),
+                        decoration: const InputDecoration(labelText: 'Nome do Medicamento/Insumo*'),
                         validator: (v) => v!.isEmpty ? 'Obrigatório' : null,
                       ),
+                      const SizedBox(height: 10),
                       DropdownButtonFormField<UnidadeMedida>(
                         value: _unidadeSelecionada,
                         decoration: const InputDecoration(labelText: 'Unidade*'),
@@ -76,14 +73,12 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
                         keyboardType: TextInputType.number,
                         validator: (v) => (int.tryParse(v ?? '-1') ?? -1) < 0 ? 'Inválido' : null,
                       ),
-                      // --- CORREÇÃO 1: Adicionado a barra invertida (\) ---
                       TextFormField(
                         controller: _valorController,
-                        decoration: const InputDecoration(labelText: 'Preço de Venda (R\$)*'),
-                        keyboardType: TextInputType.numberWithOptions(decimal: true),
+                        decoration: const InputDecoration(labelText: 'Preço Estimado (R\$)*'),
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
                         validator: (v) => (double.tryParse(v!.replaceAll(',', '.')) ?? -1) < 0 ? 'Inválido' : null,
                       ),
-                      // ----------------------------------------------------
                     ],
                   ),
                 ),
@@ -98,22 +93,21 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
                         await Provider.of<EstoqueService>(context, listen: false)
                             .addProduto(
                           nome: _nomeController.text,
-                          // --- CORREÇÃO 2: Passando o nome da enum como String ---
                           unidade: _unidadeSelecionada.name,
-                          // ------------------------------------------------------
                           estoqueMinimo: int.parse(_minimoController.text),
                           valor: double.parse(_valorController.text.replaceAll(',', '.')),
+                          // O Service já força "FARMACIA" internamente
                         );
-                        Navigator.of(context).pop();
+                        if (mounted) Navigator.of(context).pop();
                         _refreshProdutos();
                       } catch (e) {
                         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red));
                       } finally {
-                        setModalState(() => _isSaving = false);
+                        if (mounted) setModalState(() => _isSaving = false);
                       }
                     }
                   },
-                  child: _isSaving ? const CircularProgressIndicator(strokeWidth: 2) : const Text('Salvar Produto'),
+                  child: _isSaving ? const CircularProgressIndicator(strokeWidth: 2) : const Text('Salvar'),
                 ),
               ],
             );
@@ -123,9 +117,8 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
     );
   }
   
-  // --- MODAL 2: DAR ENTRADA EM PRODUTO EXISTENTE ---
-  // O tipo é dynamic porque não temos a classe ProdutoEstoque aqui
-  Future<void> _showAddEntradaDialog(dynamic produto) async { 
+  // --- MODAL 2: DAR ENTRADA EM PRODUTO ---
+  Future<void> _showAddEntradaDialog(Produto produto) async { 
     final _formKey = GlobalKey<FormState>();
     final _qtdController = TextEditingController();
     final _loteController = TextEditingController();
@@ -138,7 +131,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
         return StatefulBuilder(
           builder: (context, setModalState) {
             return AlertDialog(
-              title: Text('Dar Entrada em: ${produto.nome}'),
+              title: Text('Entrada: ${produto.nome}'),
               content: Form(
                 key: _formKey,
                 child: SingleChildScrollView(
@@ -148,7 +141,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
                       TextFormField(
                         controller: _qtdController,
                         autofocus: true,
-                        decoration: const InputDecoration(labelText: 'Quantidade*'),
+                        decoration: const InputDecoration(labelText: 'Quantidade a Adicionar*'),
                         keyboardType: TextInputType.number,
                         validator: (v) => (int.tryParse(v ?? '0') ?? 0) <= 0 ? 'Inválido' : null,
                       ),
@@ -158,7 +151,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
                       ),
                       TextFormField(
                         controller: _validadeController,
-                        decoration: const InputDecoration(labelText: 'Validade (Opcional)', hintText: 'AAAA-MM-DD'),
+                        decoration: const InputDecoration(labelText: 'Validade (AAAA-MM-DD)', hintText: '2025-12-31'),
                         keyboardType: TextInputType.datetime,
                       ),
                     ],
@@ -172,25 +165,23 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
                     if (_formKey.currentState!.validate()) {
                       setModalState(() => _isSaving = true);
                       try {
-                        // --- CHAMADA CORRIGIDA: Se o método não existir, o erro vai aparecer no Service ---
                         await Provider.of<EstoqueService>(context, listen: false)
-                            .addEntradaEstoque( // <-- O Service PRECISA deste método
+                            .addEntradaEstoque(
                           produtoId: produto.id,
                           quantidade: int.parse(_qtdController.text),
                           lote: _loteController.text.isEmpty ? null : _loteController.text,
                           dataValidade: _validadeController.text.isEmpty ? null : _validadeController.text,
                         );
-                        // ------------------------------------------------------------------------------------
-                        Navigator.of(context).pop();
-                        _refreshProdutos(); // Atualiza a lista principal
+                        if (mounted) Navigator.of(context).pop();
+                        _refreshProdutos();
                       } catch (e) {
                         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red));
                       } finally {
-                        setModalState(() => _isSaving = false);
+                         if (mounted) setModalState(() => _isSaving = false);
                       }
                     }
                   },
-                  child: _isSaving ? const CircularProgressIndicator(strokeWidth: 2) : const Text('Confirmar Entrada'),
+                  child: _isSaving ? const CircularProgressIndicator(strokeWidth: 2) : const Text('Confirmar'),
                 ),
               ],
             );
@@ -206,7 +197,8 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
       appBar: AppBar(
         title: const Text('Gestão de Estoque (Farmácia)'),
       ),
-      body: FutureBuilder<List<dynamic>>(
+      // Usando List<Produto> real
+      body: FutureBuilder<List<Produto>>(
         future: _produtosFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
@@ -216,19 +208,21 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
             return Center(child: Text('Erro: ${snapshot.error}'));
           }
           if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            return const Center(child: Text('Nenhum produto cadastrado no catálogo.'));
+            return const Center(child: Text('Nenhum medicamento/insumo cadastrado.'));
           }
 
           final produtos = snapshot.data!;
-         return ListView.builder(
+          
+          return ListView.builder(
             itemCount: produtos.length,
             itemBuilder: (context, index) {
               final produto = produtos[index];
+
+              // --- REMOVIDO O BLOCO DE FILTRO ERRADO QUE ESTAVA AQUI ---
+              // A lista 'produtos' já veio filtrada do Service.
               
-              // Acesso aos campos corrigidos (assumindo que o Service os corrigiu)
-              final estoqueAtual = produto.estoque ?? 0;
-              final estoqueMinimo = produto.estoqueMinimo ?? 0;
-              final valorVenda = produto.valor ?? 0.0;
+              final estoqueAtual = produto.estoque;
+              final estoqueMinimo = produto.estoqueMinimo;
               
               final bool estoqueBaixo = estoqueMinimo > 0 && estoqueAtual <= estoqueMinimo;
               
@@ -242,22 +236,20 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
                       color: estoqueBaixo ? Colors.red.shade800 : Colors.green.shade800,
                     ),
                   ),
-                  title: Text(produto.nome),
+                  title: Text(produto.nome, style: const TextStyle(fontWeight: FontWeight.bold)),
                   
-                  // --- CORREÇÃO APLICADA AQUI (Acesso Condicional) ---
                   subtitle: Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-        // O .name é o problema se a unidadeMedida for nula.
-        // Usamos ?.name para evitar o erro e ?? 'UND' como fallback.
-        Text('Estoque Atual: $estoqueAtual ${produto.unidadeMedida}'), 
-        // ...
-    ],
-), 
-                  // ----------------------------------------------------
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                        // Exibe a unidade (como é String vinda do JSON, não precisa de .name)
+                        Text('Estoque: $estoqueAtual ${produto.unidadeMedida}'), 
+                        if (estoqueBaixo)
+                          Text('Estoque Baixo! Mínimo: $estoqueMinimo', style: TextStyle(color: Colors.red[800], fontSize: 12)),
+                    ],
+                  ), 
                   
                   trailing: ElevatedButton(
-                    child: const Text('Dar Entrada'),
+                    child: const Text('Entrada'),
                     onPressed: () => _showAddEntradaDialog(produto),
                   ),
                 ),
@@ -269,7 +261,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
       floatingActionButton: FloatingActionButton(
         onPressed: _showAddProdutoDialog,
         child: const Icon(Icons.add),
-        tooltip: 'Novo Produto',
+        tooltip: 'Novo Medicamento',
       ),
     );
   }

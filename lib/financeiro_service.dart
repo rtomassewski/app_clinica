@@ -310,4 +310,67 @@ class FinanceiroService with ChangeNotifier {
       throw Exception('Falha ao criar categoria.');
     }
   }
+  Future<void> editarTransacao({
+    required int id,
+    required String descricao,
+    required double valor,
+    required String tipo, // 'RECEITA' ou 'DESPESA'
+    required String categoria,
+    required String formaPagamento,
+  }) async {
+    final token = await authService.getToken();
+    
+    // ATENÇÃO: A URL deve bater com o seu Controller NestJS
+    final url = Uri.parse('$baseUrl/transacoes-financeiras/$id');
+
+    try {
+      final response = await http.patch(
+        url,
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          "descricao": descricao,
+          "valor": valor,
+          "tipo": tipo,
+          "categoria": categoria,
+          "forma_pagamento": formaPagamento, // Verifique se seu DTO espera snake_case ou camelCase
+        }),
+      );
+
+      if (response.statusCode != 200) {
+        final erroMsg = jsonDecode(response.body)['message'] ?? 'Erro ao editar transação.';
+        throw Exception(erroMsg);
+      }
+      
+      notifyListeners(); // Atualiza a tela
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  // --- EXCLUIR (DELETE) ---
+  Future<void> excluirTransacao(int id) async {
+    final token = await authService.getToken();
+    final url = Uri.parse('$baseUrl/transacoes-financeiras/$id');
+
+    try {
+      final response = await http.delete(
+        url,
+        headers: {
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode != 200) {
+        final erroMsg = jsonDecode(response.body)['message'] ?? 'Erro ao excluir transação.';
+        throw Exception(erroMsg);
+      }
+      
+      notifyListeners(); // Atualiza a tela
+    } catch (e) {
+      rethrow;
+    }
+  }
 }

@@ -37,6 +37,48 @@ class _LojaScreenState extends State<LojaScreen> with SingleTickerProviderStateM
       Provider.of<LojaService>(context, listen: false).fetchProdutos();
     });
   }
+  void _showEntradaEstoqueDialog(Produto produto) {
+    final qtdController = TextEditingController();
+    
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text("Entrada de Estoque: ${produto.nome}"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text("Adicionar quantidade ao estoque atual."),
+            const SizedBox(height: 10),
+            TextField(
+              controller: qtdController,
+              keyboardType: TextInputType.number,
+              autofocus: true,
+              decoration: const InputDecoration(labelText: "Quantidade", border: OutlineInputBorder()),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Cancelar")),
+          ElevatedButton(
+            onPressed: () async {
+              final qtd = int.tryParse(qtdController.text) ?? 0;
+              if (qtd > 0) {
+                try {
+                  await Provider.of<LojaService>(context, listen: false)
+                      .adicionarEntradaEstoque(produtoId: produto.id, quantidade: qtd);
+                  Navigator.pop(ctx);
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Estoque atualizado!")));
+                } catch (e) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erro: $e"), backgroundColor: Colors.red));
+                }
+              }
+            },
+            child: const Text("Confirmar Entrada"),
+          )
+        ],
+      ),
+    );
+  }
 
   @override
   void dispose() {
@@ -239,12 +281,28 @@ class _LojaScreenState extends State<LojaScreen> with SingleTickerProviderStateM
                 itemCount: produtos.length,
                 itemBuilder: (context, index) {
                   final produto = produtos[index];
-                  return ListTile(
-                    title: Text(produto.nome, style: TextStyle(fontWeight: FontWeight.bold, color: produto.ativo ? Colors.black : Colors.grey)),
-                    subtitle: Text("Estoque: ${produto.estoque} | Preço: R\$ ${produto.valor.toStringAsFixed(2)}"),
-                    trailing: IconButton(
-                      icon: const Icon(Icons.edit, color: Colors.blueGrey),
-                      onPressed: () => _showAddEditProdutoDialog(context, produtoParaEditar: produto),
+                  return Card( // Melhor usar Card para separar visualmente
+                    margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    child: ListTile(
+                      title: Text(produto.nome, style: TextStyle(fontWeight: FontWeight.bold, color: produto.ativo ? Colors.black : Colors.grey)),
+                      subtitle: Text("Estoque: ${produto.estoque} | Preço: R\$ ${produto.valor.toStringAsFixed(2)}"),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // Botão de Estoque (Novo)
+                          IconButton(
+                            icon: const Icon(Icons.add_box, color: Colors.green),
+                            tooltip: "Adicionar Estoque",
+                            onPressed: () => _showEntradaEstoqueDialog(produto),
+                          ),
+                          // Botão de Editar (Existente)
+                          IconButton(
+                            icon: const Icon(Icons.edit, color: Colors.blueGrey),
+                            tooltip: "Editar Produto",
+                            onPressed: () => _showAddEditProdutoDialog(context, produtoParaEditar: produto),
+                          ),
+                        ],
+                      ),
                     ),
                   );
                 },

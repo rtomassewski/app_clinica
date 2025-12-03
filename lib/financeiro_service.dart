@@ -55,9 +55,7 @@ class TransacaoFinanceira {
   final String categoriaNome;
   final String? pacienteNome;
   
-  // --- CAMPO NOVO ADICIONADO ---
-  final int? usuarioBaixaId; // ID de quem recebeu/pagou
-  // -----------------------------
+  final int? usuarioBaixaId; 
 
   TransacaoFinanceira({
     required this.id,
@@ -68,7 +66,7 @@ class TransacaoFinanceira {
     this.dataPagamento,
     required this.categoriaNome,
     this.pacienteNome,
-    this.usuarioBaixaId, // <--- Adicionado no construtor
+    this.usuarioBaixaId, 
   });
 
   factory TransacaoFinanceira.fromJson(Map<String, dynamic> json) {
@@ -83,11 +81,7 @@ class TransacaoFinanceira {
           : null,
       categoriaNome: json['categoria']?['nome'] ?? 'Geral',
       pacienteNome: json['paciente']?['nome_completo'],
-      
-      // --- LÊ O NOVO CAMPO DO JSON ---
-      // O backend deve retornar 'usuarioBaixaId' (conforme o schema do Prisma)
-      usuarioBaixaId: json['usuarioBaixaId'], 
-      // -------------------------------
+      usuarioBaixaId: json['usuario_lancamento_id'], 
     );
   }
 }
@@ -95,6 +89,7 @@ class TransacaoFinanceira {
 // --- O SERVIÇO ---
 
 class FinanceiroService with ChangeNotifier {
+  // A variável é privada (_authService)
   final AuthService _authService;
   FinanceiroService(this._authService);
 
@@ -110,7 +105,7 @@ class FinanceiroService with ChangeNotifier {
     if (token == null) return;
 
     try {
-      final url = Uri.parse('$baseUrl/caixas/status/hoje'); 
+      final url = Uri.parse('$baseUrl/caixas/status/hoje'); // Ajuste se a rota mudou no backend
       final response = await http.get(url, headers: {'Authorization': 'Bearer $token'});
 
       if (response.statusCode == 200) {
@@ -249,8 +244,9 @@ class FinanceiroService with ChangeNotifier {
           'valor': valor,
           'tipo': tipo,
           'data_vencimento': dataParcela.toIso8601String(),
-          'categoriaId': categoriaId,
-          'pacienteId': pacienteId,
+          // Correção: Backend espera snake_case
+          'categoria_id': categoriaId, 
+          'paciente_id': pacienteId,
         }),
       );
 
@@ -310,17 +306,20 @@ class FinanceiroService with ChangeNotifier {
       throw Exception('Falha ao criar categoria.');
     }
   }
+
+  // --- NOVOS MÉTODOS CORRIGIDOS ---
+
   Future<void> editarTransacao({
     required int id,
     required String descricao,
     required double valor,
-    required String tipo, // 'RECEITA' ou 'DESPESA'
-    required String categoria,
+    required String tipo,
+    required int categoriaId, // Alterado para int para bater com o backend
     required String formaPagamento,
   }) async {
-    final token = await authService.getToken();
+    // CORREÇÃO: Usando _authService (privado)
+    final token = await _authService.getToken(); 
     
-    // ATENÇÃO: A URL deve bater com o seu Controller NestJS
     final url = Uri.parse('$baseUrl/transacoes-financeiras/$id');
 
     try {
@@ -334,8 +333,9 @@ class FinanceiroService with ChangeNotifier {
           "descricao": descricao,
           "valor": valor,
           "tipo": tipo,
-          "categoria": categoria,
-          "forma_pagamento": formaPagamento, // Verifique se seu DTO espera snake_case ou camelCase
+          // Correção: Enviando como categoria_id (snake_case)
+          "categoria_id": categoriaId, 
+          "forma_pagamento": formaPagamento,
         }),
       );
 
@@ -344,15 +344,15 @@ class FinanceiroService with ChangeNotifier {
         throw Exception(erroMsg);
       }
       
-      notifyListeners(); // Atualiza a tela
+      notifyListeners(); 
     } catch (e) {
       rethrow;
     }
   }
 
-  // --- EXCLUIR (DELETE) ---
   Future<void> excluirTransacao(int id) async {
-    final token = await authService.getToken();
+    // CORREÇÃO: Usando _authService (privado)
+    final token = await _authService.getToken();
     final url = Uri.parse('$baseUrl/transacoes-financeiras/$id');
 
     try {
@@ -368,7 +368,7 @@ class FinanceiroService with ChangeNotifier {
         throw Exception(erroMsg);
       }
       
-      notifyListeners(); // Atualiza a tela
+      notifyListeners(); 
     } catch (e) {
       rethrow;
     }

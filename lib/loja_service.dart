@@ -215,4 +215,37 @@ class LojaService with ChangeNotifier {
       rethrow;
     }
   }
+  Future<void> adicionarEntradaEstoque({
+    required int produtoId,
+    required int quantidade,
+  }) async {
+    final token = await authService.getToken();
+    final url = Uri.parse('$baseUrl/entradas-estoque');
+
+    final body = jsonEncode({
+      "produtoId": produtoId,
+      "quantidade": quantidade,
+      // Loja geralmente não exige lote/validade, mas se quiser pode adicionar
+    });
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: body,
+      );
+
+      if (response.statusCode != 201) {
+        final erroMsg = jsonDecode(response.body)['message'] ?? 'Erro ao dar entrada.';
+        throw Exception(erroMsg);
+      }
+      
+      await fetchProdutos(); // Atualiza a lista para mostrar o novo estoque
+    } catch (e) {
+      rethrow;
+    }
+  }
 }

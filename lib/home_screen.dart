@@ -57,127 +57,134 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // --- NOVO: Lógica para adicionar crédito via Menu ---
   void _exibirDialogAdicionarCredito(BuildContext context) async {
-  // Assumindo que você tem PacienteService
-  final pacienteService = Provider.of<PacienteService>(context, listen: false);
-  final lojaService = Provider.of<LojaService>(context, listen: false);
-  
-  // Variaveis de estado do diálogo
-  int? pacienteSelecionadoId;
-  final valorCtrl = TextEditingController();
-  
-  // Lista de pacientes (assumindo que getPacientes() retorna o saldo)
-  final Future<List<dynamic>> pacientesFuture = pacienteService.getPacientes();
+    final pacienteService = Provider.of<PacienteService>(context, listen: false);
+    final lojaService = Provider.of<LojaService>(context, listen: false);
+    
+    int? pacienteSelecionadoId;
+    final valorCtrl = TextEditingController();
+    
+    final Future<List<Paciente>> pacientesFuture = pacienteService.getPacientes();
 
-  showDialog(
-    context: context,
-    builder: (ctx) {
-      return StatefulBuilder(
-        builder: (context, setModalState) {
-          return AlertDialog(
-            title: const Text("Adicionar Crédito ao Paciente"),
-            content: FutureBuilder<List<dynamic>>(
-              future: pacientesFuture,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const SizedBox(
-                    height: 150, 
-                    child: Center(child: CircularProgressIndicator())
-                  );
-                }
-                
-                if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                  return const Text("Nenhum paciente encontrado.");
-                }
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return AlertDialog(
+              title: const Text("Adicionar Crédito ao Paciente"),
+              content: FutureBuilder<List<Paciente>>(
+                future: pacientesFuture,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const SizedBox(height: 100, child: Center(child: CircularProgressIndicator()));
+                  }
+                  
+                  if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                    return const Text("Nenhum paciente encontrado.");
+                  }
 
-                // Pacientes disponíveis (assumindo que o PacienteService retorna objetos válidos)
-                final pacientes = snapshot.data!;
-                // Encontrar o objeto do paciente selecionado para exibir o saldo
-                final pacienteSelecionado = pacientes.firstWhere(
-                    (p) => p.id == pacienteSelecionadoId,
-                    orElse: () => null,
-                );
-                
-                return SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Dropdown de Pacientes
-                      DropdownButtonFormField<int>(
-                        decoration: const InputDecoration(labelText: 'Selecione o Paciente*'),
-                        value: pacienteSelecionadoId,
-                        items: pacientes.map((paciente) {
-                          // Se o seu modelo Paciente tem 'nomeCompleto' e 'id'
-                          return DropdownMenuItem<int>(
-                            value: paciente.id, 
-                            child: Text(paciente.nomeCompleto)
-                          );
-                        }).toList(),
-                        onChanged: (novoId) {
-                          setModalState(() {
-                            pacienteSelecionadoId = novoId;
-                          });
-                        },
-                        validator: (v) => v == null ? 'Obrigatório' : null,
-                      ),
-                      
-                      const SizedBox(height: 15),
-                      
-                      // Saldo Disponível (Resolve o problema 3)
-                      if (pacienteSelecionado != null)
-                        Text(
-                          "Crédito Atual: R\$ ${pacienteSelecionado.saldo.toStringAsFixed(2)}",
-                          style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.teal),
-                        ),
-                      
-                      const SizedBox(height: 15),
-                      
-                      // Valor a Adicionar
-                      TextFormField(
-                        controller: valorCtrl,
-                        keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(labelText: "Valor a Adicionar (R\$)*", prefixText: "R\$ "),
-                        validator: (v) => (double.tryParse(v!.replaceAll(',', '.')) ?? 0) <= 0 ? 'Valor inválido' : null,
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Cancelar")),
-              ElevatedButton(
-                onPressed: () async {
-                  // Lógica para enviar crédito para o Backend
-                  if (pacienteSelecionadoId != null && valorCtrl.text.isNotEmpty) {
+                  final pacientes = snapshot.data!;
+                  
+                  // --- CORREÇÃO DO ERRO AQUI ---
+                  // Buscamos o paciente de forma segura. Se não achar, fica null.
+                  Paciente? pacienteSelecionado;
+                  if (pacienteSelecionadoId != null) {
                     try {
-                      final valor = double.parse(valorCtrl.text.replaceAll(',', '.'));
-                      await lojaService.adicionarCredito(
-                          pacienteId: pacienteSelecionadoId!, 
-                          valor: valor
-                      );
-                      Navigator.pop(ctx);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text("Crédito adicionado com sucesso!"))
-                      );
-                      // Opcional: Atualizar a lista de pacientes/saldos
+                      pacienteSelecionado = pacientes.firstWhere((p) => p.id == pacienteSelecionadoId);
                     } catch (e) {
-                       Navigator.pop(ctx);
-                       ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text("Erro ao adicionar crédito: $e"), backgroundColor: Colors.red)
-                       );
+                      pacienteSelecionado = null;
                     }
                   }
+                  // -----------------------------
+                  
+                  return SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        DropdownButtonFormField<int>(
+                          decoration: const InputDecoration(labelText: 'Selecione o Paciente*'),
+                          value: pacienteSelecionadoId,
+                          items: pacientes.map((paciente) {
+                            return DropdownMenuItem<int>(
+                              value: paciente.id, 
+                              child: Text(paciente.nomeCompleto)
+                            );
+                          }).toList(),
+                          onChanged: (novoId) {
+                            setModalState(() {
+                              pacienteSelecionadoId = novoId;
+                            });
+                          },
+                        ),
+                        
+                        const SizedBox(height: 15),
+                        
+                        if (pacienteSelecionado != null)
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: Colors.teal.shade50,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.teal.shade200)
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.account_balance_wallet, color: Colors.teal),
+                                const SizedBox(width: 10),
+                                Text(
+                                  "Crédito Atual: R\$ ${pacienteSelecionado.saldo.toStringAsFixed(2)}",
+                                  style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.teal),
+                                ),
+                              ],
+                            ),
+                          ),
+                        
+                        const SizedBox(height: 15),
+                        
+                        TextFormField(
+                          controller: valorCtrl,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(labelText: "Valor a Adicionar (R\$)*", prefixText: "R\$ "),
+                        ),
+                      ],
+                    ),
+                  );
                 },
-                child: const Text("CONFIRMAR"),
-              )
-            ],
-          );
-        },
-      );
-    },
-  );
-}
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Cancelar")),
+                ElevatedButton(
+                  onPressed: () async {
+                    if (pacienteSelecionadoId != null && valorCtrl.text.isNotEmpty) {
+                      try {
+                        final valor = double.parse(valorCtrl.text.replaceAll(',', '.'));
+                        await lojaService.adicionarCredito(
+                            pacienteId: pacienteSelecionadoId!, 
+                            valor: valor
+                        );
+                        Navigator.pop(ctx);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text("Crédito adicionado com sucesso!"))
+                        );
+                        // Atualiza a tela para refletir se necessário
+                        setState(() { _refreshPacientes(); });
+                      } catch (e) {
+                         ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text("Erro: $e"), backgroundColor: Colors.red)
+                         );
+                      }
+                    }
+                  },
+                  child: const Text("CONFIRMAR"),
+                )
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
 
   // --- NOVO: Constrói o Menu Lateral ---
   Widget _buildDrawer(BuildContext context) {

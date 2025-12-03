@@ -344,7 +344,6 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
     final isEditing = transacaoParaEditar != null;
     final _formKey = GlobalKey<FormState>();
     
-    // Preenche controladores se estiver editando
     final _descController = TextEditingController(text: isEditing ? transacaoParaEditar.descricao : '');
     final _valorController = TextEditingController(text: isEditing ? transacaoParaEditar.valor.toStringAsFixed(2) : '');
     
@@ -358,7 +357,6 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
     List<CategoriaFinanceira> _categorias = [];
     List<Paciente> _pacientes = [];
     
-    // Carrega categorias e pacientes
     try {
         final financeiroService = Provider.of<FinanceiroService>(context, listen: false);
         final pacienteService = Provider.of<PacienteService>(context, listen: false);
@@ -366,12 +364,10 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
         _pacientes = await pacienteService.getPacientes();
 
         if (isEditing) {
-          // Tenta encontrar a categoria correspondente na lista carregada
           try {
              _catSelecionada = _categorias.firstWhere((c) => c.nome == transacaoParaEditar.categoriaNome); 
-             // Obs: O ideal seria comparar por ID se você tiver o ID da categoria na TransacaoFinanceira
           } catch (e) {
-             // Categoria pode ter sido excluída ou nome alterado
+             // Categoria não encontrada
           }
         }
     } catch (_) {}
@@ -392,8 +388,20 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
                     key: _formKey,
                     child: Column(mainAxisSize: MainAxisSize.min, children: [
                         Row(children: [
-                          Expanded(child: RadioListTile(title: const Text("Despesa"), value: 'DESPESA', groupValue: _tipoSelecionado, onChanged: isEditing ? null : (v) => setModalState(() => _tipoSelecionado = v!))), 
-                          Expanded(child: RadioListTile(title: const Text("Receita"), value: 'RECEITA', groupValue: _tipoSelecionado, onChanged: isEditing ? null : (v) => setModalState(() => _tipoSelecionado = v!)))
+                          // --- CORREÇÃO AQUI: Adicionado <String> ---
+                          Expanded(child: RadioListTile<String>(
+                            title: const Text("Despesa"), 
+                            value: 'DESPESA', 
+                            groupValue: _tipoSelecionado, 
+                            onChanged: isEditing ? null : (v) => setModalState(() => _tipoSelecionado = v!)
+                          )), 
+                          Expanded(child: RadioListTile<String>(
+                            title: const Text("Receita"), 
+                            value: 'RECEITA', 
+                            groupValue: _tipoSelecionado, 
+                            onChanged: isEditing ? null : (v) => setModalState(() => _tipoSelecionado = v!)
+                          ))
+                          // ------------------------------------------
                         ]),
                         TextFormField(controller: _descController, decoration: const InputDecoration(labelText: 'Descrição*'), validator: (v) => v!.isEmpty ? 'Obrigatório' : null,),
                         TextFormField(controller: _valorController, decoration: const InputDecoration(labelText: 'Valor (R\$)*'), keyboardType: const TextInputType.numberWithOptions(decimal: true), validator: (v) => (double.tryParse(v?.replaceAll(',', '.') ?? '0') ?? 0) <= 0 ? 'Inválido' : null,),
@@ -416,7 +424,6 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
                              onChanged: (value) => setModalState(() => _pacienteSelecionado = value),
                            ),
                         
-                        // Edição de data de vencimento
                         ListTile(
                           title: Text("Vencimento: ${DateFormat('dd/MM/yyyy').format(_dataVenc)}"),
                           trailing: const Icon(Icons.calendar_today),
@@ -426,7 +433,6 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
                           },
                         ),
 
-                        // Repetição só habilitada na criação
                         if (!isEditing) ...[
                           const Divider(),
                           SwitchListTile(title: const Text("Repetir?"), value: _repetir, onChanged: (val) => setModalState(() => _repetir = val),),
@@ -445,18 +451,20 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
                         final valor = double.parse(_valorController.text.replaceAll(',', '.'));
                         
                         if (isEditing) {
-                          // --- MODO EDITAR ---
-                          // Certifique-se que o FinanceiroService tem o método editarTransacao
+                          // --- MODO EDITAR (CORRIGIDO) ---
                           await service.editarTransacao(
                             id: transacaoParaEditar!.id,
                             descricao: _descController.text,
                             valor: valor,
                             tipo: _tipoSelecionado,
-                            categoria: _catSelecionada!.nome, // Ou ID se seu backend esperar ID
-                            formaPagamento: 'DINHEIRO', // Ajuste se tiver campo de formaPagamento
+                            
+                            // ANTES ESTAVA: categoria: _catSelecionada!.nome
+                            // AGORA DEVE SER:
+                            categoriaId: _catSelecionada!.id, 
+                            
+                            formaPagamento: 'DINHEIRO', 
                           );
                         } else {
-                          // --- MODO CRIAR ---
                           await service.addTransacao(
                             descricao: _descController.text, 
                             valor: valor, 
@@ -470,7 +478,7 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
                         }
                         
                         Navigator.pop(context);
-                        _carregarDados();
+                        _carregarDados(); // Recarrega a tela
                       } catch (e) { 
                         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red)); 
                       }
@@ -483,7 +491,6 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
       },
     );
   }
-
   // ... (Resto do código: exportarRelatorio, showConfigNotificacao mantidos iguais) ...
   Future<void> _exportarRelatorio() async {
     if (kIsWeb) return;

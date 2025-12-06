@@ -69,14 +69,20 @@ class Paciente {
   final double saldo;
   Paciente({ required this.id, required this.nomeCompleto, this.nomeSocial, required this.status, required this.saldo, });
   factory Paciente.fromJson(Map<String, dynamic> json) {
-    final num saldoApi = json['saldo'] as num? ?? 0.0;
-    return Paciente(
-      id: json['id'],
-      nomeCompleto: json['nome_completo'],
-      nomeSocial: json['nome_social'],
-      status: json['status'],
-      saldo: saldoApi.toDouble(),
-    );
+  // CORREÇÃO: Converte para String primeiro, depois tenta parsear para double.
+  // Isso resolve problemas se o backend mandar "100.00" (string) ou 100 (number)
+  double saldoTratado = 0.0;
+  if (json['saldo'] != null) {
+    saldoTratado = double.tryParse(json['saldo'].toString()) ?? 0.0;
+  }
+
+  return Paciente(
+    id: json['id'],
+    nomeCompleto: json['nome_completo'],
+    nomeSocial: json['nome_social'],
+    status: json['status'],
+    saldo: saldoTratado,
+  );
   }
 }
 

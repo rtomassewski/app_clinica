@@ -2,16 +2,8 @@
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-// import 'package:intl/intl.dart'; // Descomente se precisar formatar datas
-
 import 'loja_service.dart'; // Traz: Produto, LojaService
-
-// Traz: Paciente, PacienteService e o enum StatusPaciente REAL.
-// Ocultamos apenas o Produto para não dar conflito.
-import 'paciente_service.dart' hide Produto; 
-
-// REMOVIDO: enum StatusPaciente { ... } 
-// (Não redefina! Use o que vem do import acima)
+import 'paciente_service.dart' hide Produto; // Traz: Paciente, PacienteService
 
 class LojaScreen extends StatefulWidget {
   const LojaScreen({super.key});
@@ -23,6 +15,9 @@ class LojaScreen extends StatefulWidget {
 class _LojaScreenState extends State<LojaScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
   
+  // Controle de carregamento dos pacientes
+  Future<List<Paciente>>? _pacientesFuture;
+  
   List<Map<String, dynamic>> _carrinho = [];
   int? _pacienteSelecionadoId;
   
@@ -33,51 +28,18 @@ class _LojaScreenState extends State<LojaScreen> with SingleTickerProviderStateM
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     
+    // Assim que a tela abre, carregamos produtos E pacientes atualizados
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Provider.of<LojaService>(context, listen: false).fetchProdutos();
+      _refreshPacientes(); // <--- IMPORTANTE: Busca saldo atualizado
     });
   }
-  void _showEntradaEstoqueDialog(Produto produto) {
-    final qtdController = TextEditingController();
-    
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text("Entrada de Estoque: ${produto.nome}"),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text("Adicionar quantidade ao estoque atual."),
-            const SizedBox(height: 10),
-            TextField(
-              controller: qtdController,
-              keyboardType: TextInputType.number,
-              autofocus: true,
-              decoration: const InputDecoration(labelText: "Quantidade", border: OutlineInputBorder()),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Cancelar")),
-          ElevatedButton(
-            onPressed: () async {
-              final qtd = int.tryParse(qtdController.text) ?? 0;
-              if (qtd > 0) {
-                try {
-                  await Provider.of<LojaService>(context, listen: false)
-                      .adicionarEntradaEstoque(produtoId: produto.id, quantidade: qtd);
-                  Navigator.pop(ctx);
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Estoque atualizado!")));
-                } catch (e) {
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erro: $e"), backgroundColor: Colors.red));
-                }
-              }
-            },
-            child: const Text("Confirmar Entrada"),
-          )
-        ],
-      ),
-    );
+
+  // Função para forçar a busca de dados novos no servidor
+  void _refreshPacientes() {
+    setState(() {
+      _pacientesFuture = Provider.of<PacienteService>(context, listen: false).getPacientes();
+    });
   }
 
   @override
@@ -110,14 +72,12 @@ class _LojaScreenState extends State<LojaScreen> with SingleTickerProviderStateM
   }
 
   // --- ABA 1: VENDA (PDV) ---
-  Widget _buildAbaVenda() {
-    final pacienteService = Provider.of<PacienteService>(context, listen: false);
-
+ Widget _buildAbaVenda() {
     return FutureBuilder<List<Paciente>>(
-      future: pacienteService.getPacientes() as Future<List<Paciente>>?, 
+      future: _pacientesFuture, 
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
+          return const SizedBox(height: 100, child: Center(child: CircularProgressIndicator()));
         }
         if (!snapshot.hasData || snapshot.data!.isEmpty) {
           return const Center(child: Text("Nenhum paciente encontrado."));
@@ -125,43 +85,63 @@ class _LojaScreenState extends State<LojaScreen> with SingleTickerProviderStateM
 
         final pacientes = snapshot.data!;
         
-        // --- CORREÇÃO DO FALLBACK ---
-        final pacienteAtual = pacientes.firstWhere(
-            (p) => p.id == _pacienteSelecionadoId,
-            orElse: () => Paciente(
-              id: 0, 
-              nomeCompleto: "Nenhum Selecionado", 
-              saldo: 0.0,
-              // Usa o enum que veio do import 'paciente_service.dart'
-              status: StatusPaciente.ATIVO.name, 
-              // CPF REMOVIDO (Não existe no construtor segundo o log)
-              // nomeSocial: null, (Opcional, não precisa passar)
-            ),
-        );
-        // -----------------------------
+        // Mantém o paciente selecionado se possível
+        if (_pacienteSelecionadoId != null) {
+          // Verifica se o ID selecionado ainda existe na nova lista
+          final existe = pacientes.any((p) => p.id == _pacienteSelecionadoId);
+          if (!existe) _pacienteSelecionadoId = null;
+        }
 
         return Column(
           children: [
-            // 1. Selecionar Paciente
+            // 1. Selecionar Paciente (COM BOTÃO DE REFRESH)
             Padding(
               padding: const EdgeInsets.all(8.0),
               child: Card(
-                child: DropdownButtonFormField<int>(
-                  decoration: const InputDecoration(
-                    labelText: "Paciente para Venda",
-                    border: OutlineInputBorder(),
-                    contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 5)
+                elevation: 2,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4.0),
+                  child: Row(
+                    children: [
+                      // O Dropdown ocupa o espaço restante
+                      Expanded(
+                        child: DropdownButtonFormField<int>(
+                          decoration: const InputDecoration(
+                            labelText: "Cliente / Paciente",
+                            border: InputBorder.none,
+                            icon: Icon(Icons.person_search),
+                          ),
+                          value: _pacienteSelecionadoId,
+                          isExpanded: true,
+                          items: pacientes.map((p) => DropdownMenuItem(
+                            value: p.id,
+                            // Mostra o saldo que veio do banco
+                            child: Text(
+                              "${p.nomeCompleto} (R\$ ${p.saldo.toStringAsFixed(2)})",
+                              overflow: TextOverflow.ellipsis,
+                            ), 
+                          )).toList(),
+                          onChanged: (novoId) {
+                            setState(() {
+                              _pacienteSelecionadoId = novoId;
+                            });
+                          },
+                        ),
+                      ),
+                      
+                      // Botão para atualizar o saldo manualmente
+                      IconButton(
+                        icon: const Icon(Icons.refresh, color: Colors.teal),
+                        tooltip: "Atualizar Saldos",
+                        onPressed: () {
+                          _refreshPacientes();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text("Atualizando lista de pacientes..."), duration: Duration(milliseconds: 800))
+                          );
+                        },
+                      ),
+                    ],
                   ),
-                  value: _pacienteSelecionadoId,
-                  items: pacientes.map((p) => DropdownMenuItem(
-                    value: p.id,
-                    child: Text("${p.nomeCompleto} (Crédito: R\$ ${p.saldo.toStringAsFixed(2)})"), 
-                  )).toList(),
-                  onChanged: (novoId) {
-                    setState(() {
-                      _pacienteSelecionadoId = novoId;
-                    });
-                  },
                 ),
               ),
             ),
@@ -171,6 +151,11 @@ class _LojaScreenState extends State<LojaScreen> with SingleTickerProviderStateM
               child: Consumer<LojaService>(
                 builder: (context, lojaService, child) {
                   final produtos = lojaService.produtosLoja.where((p) => p.ativo).toList();
+                  
+                  if (produtos.isEmpty) {
+                    return const Center(child: Text("Nenhum produto cadastrado na Loja."));
+                  }
+
                   return ListView.builder(
                     itemCount: produtos.length,
                     itemBuilder: (context, index) {
@@ -184,20 +169,36 @@ class _LojaScreenState extends State<LojaScreen> with SingleTickerProviderStateM
 
             // 3. Resumo do Carrinho
             Container(
-              color: Colors.grey[200],
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, -2))]
+              ),
               padding: const EdgeInsets.all(20),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text("Total: R\$ ${_totalCarrinho.toStringAsFixed(2)}", style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                  ElevatedButton(
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-                    onPressed: _pacienteSelecionadoId == null || _carrinho.isEmpty ? null : () {
-                      _finalizarVenda(context);
-                    },
-                    child: const Text("FINALIZAR"),
-                  )
-                ],
+              child: SafeArea(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text("Total a Pagar:", style: TextStyle(color: Colors.grey)),
+                        Text("R\$ ${_totalCarrinho.toStringAsFixed(2)}", style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.teal)),
+                      ],
+                    ),
+                    ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.teal,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12)
+                      ),
+                      icon: const Icon(Icons.check),
+                      label: const Text("FINALIZAR"),
+                      onPressed: _pacienteSelecionadoId == null || _carrinho.isEmpty ? null : () {
+                        _finalizarVenda(context);
+                      },
+                    )
+                  ],
+                ),
               ),
             )
           ],
@@ -209,7 +210,7 @@ class _LojaScreenState extends State<LojaScreen> with SingleTickerProviderStateM
   void _finalizarVenda(BuildContext context) async {
       try {
         final lojaService = Provider.of<LojaService>(context, listen: false);
-        // Prepara os itens para o formato que o backend espera
+        
         final itensVenda = _carrinho.map((item) => {
           "produtoId": item['produto'].id,
           "qtd": item['qtd']
@@ -221,13 +222,15 @@ class _LojaScreenState extends State<LojaScreen> with SingleTickerProviderStateM
         );
 
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Venda realizada com sucesso!")));
+        
         setState(() {
           _carrinho.clear();
           _pacienteSelecionadoId = null;
         });
         
-        // Atualiza saldos (recarregando pacientes se necessário)
-        // Provider.of<PacienteService>(context, listen: false).fetchPacientes(); // Se existir esse método
+        // --- ATUALIZAÇÃO CRUCIAL ---
+        // Recarrega os pacientes para atualizar o saldo na tela imediatamente
+        _refreshPacientes(); 
         
       } catch (e) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erro na venda: $e"), backgroundColor: Colors.red));
@@ -235,26 +238,57 @@ class _LojaScreenState extends State<LojaScreen> with SingleTickerProviderStateM
   }
 
   Widget _produtoItemVenda(Produto produto) {
-    void _adicionarAoCarrinho() {
+    // Verifica se já está no carrinho
+    final itemCarrinho = _carrinho.firstWhere(
+      (item) => item['produto'].id == produto.id, 
+      orElse: () => {}
+    );
+    final qtdNoCarrinho = itemCarrinho.isNotEmpty ? itemCarrinho['qtd'] as int : 0;
+
+    void _adicionar() {
+      if (qtdNoCarrinho >= produto.estoque) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Estoque máximo atingido!"), duration: Duration(milliseconds: 500)));
+        return;
+      }
       setState(() {
-        final existingItemIndex = _carrinho.indexWhere((item) => item['produto'].id == produto.id);
-        if (existingItemIndex != -1) {
-          _carrinho[existingItemIndex]['qtd'] += 1;
+        if (qtdNoCarrinho > 0) {
+          final index = _carrinho.indexWhere((item) => item['produto'].id == produto.id);
+          _carrinho[index]['qtd']++;
         } else {
           _carrinho.add({'produto': produto, 'qtd': 1});
         }
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${produto.nome} adicionado ao carrinho.'), duration: const Duration(milliseconds: 500))
-      );
     }
 
-    return ListTile(
-      title: Text(produto.nome),
-      subtitle: Text("R\$ ${produto.valor.toStringAsFixed(2)} | Estoque: ${produto.estoque}"),
-      trailing: IconButton(
-        icon: const Icon(Icons.add_shopping_cart, color: Colors.teal),
-        onPressed: produto.estoque > 0 ? _adicionarAoCarrinho : null,
+    void _remover() {
+       setState(() {
+        if (qtdNoCarrinho > 1) {
+          final index = _carrinho.indexWhere((item) => item['produto'].id == produto.id);
+          _carrinho[index]['qtd']--;
+        } else {
+          _carrinho.removeWhere((item) => item['produto'].id == produto.id);
+        }
+      });
+    }
+
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      child: ListTile(
+        title: Text(produto.nome, style: const TextStyle(fontWeight: FontWeight.bold)),
+        subtitle: Text("R\$ ${produto.valor.toStringAsFixed(2)} | Estoque: ${produto.estoque}"),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (qtdNoCarrinho > 0) ...[
+              IconButton(icon: const Icon(Icons.remove_circle_outline, color: Colors.red), onPressed: _remover),
+              Text("$qtdNoCarrinho", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            ],
+            IconButton(
+              icon: const Icon(Icons.add_circle_outline, color: Colors.teal),
+              onPressed: produto.estoque > 0 ? _adicionar : null,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -281,7 +315,7 @@ class _LojaScreenState extends State<LojaScreen> with SingleTickerProviderStateM
                 itemCount: produtos.length,
                 itemBuilder: (context, index) {
                   final produto = produtos[index];
-                  return Card( // Melhor usar Card para separar visualmente
+                  return Card(
                     margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                     child: ListTile(
                       title: Text(produto.nome, style: TextStyle(fontWeight: FontWeight.bold, color: produto.ativo ? Colors.black : Colors.grey)),
@@ -289,16 +323,13 @@ class _LojaScreenState extends State<LojaScreen> with SingleTickerProviderStateM
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          // Botão de Estoque (Novo)
                           IconButton(
                             icon: const Icon(Icons.add_box, color: Colors.green),
                             tooltip: "Adicionar Estoque",
                             onPressed: () => _showEntradaEstoqueDialog(produto),
                           ),
-                          // Botão de Editar (Existente)
                           IconButton(
                             icon: const Icon(Icons.edit, color: Colors.blueGrey),
-                            tooltip: "Editar Produto",
                             onPressed: () => _showAddEditProdutoDialog(context, produtoParaEditar: produto),
                           ),
                         ],
@@ -311,6 +342,50 @@ class _LojaScreenState extends State<LojaScreen> with SingleTickerProviderStateM
           ],
         );
       },
+    );
+  }
+
+  // --- MODAL DE ENTRADA DE ESTOQUE ---
+  void _showEntradaEstoqueDialog(Produto produto) {
+    final qtdController = TextEditingController();
+    
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text("Entrada: ${produto.nome}"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text("Quantos itens chegaram?"),
+            const SizedBox(height: 10),
+            TextField(
+              controller: qtdController,
+              keyboardType: TextInputType.number,
+              autofocus: true,
+              decoration: const InputDecoration(labelText: "Quantidade", border: OutlineInputBorder()),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Cancelar")),
+          ElevatedButton(
+            onPressed: () async {
+              final qtd = int.tryParse(qtdController.text) ?? 0;
+              if (qtd > 0) {
+                try {
+                  await Provider.of<LojaService>(context, listen: false)
+                      .adicionarEntradaEstoque(produtoId: produto.id, quantidade: qtd);
+                  Navigator.pop(ctx);
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Estoque atualizado!")));
+                } catch (e) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erro: $e"), backgroundColor: Colors.red));
+                }
+              }
+            },
+            child: const Text("Confirmar"),
+          )
+        ],
+      ),
     );
   }
 
@@ -327,11 +402,10 @@ class _LojaScreenState extends State<LojaScreen> with SingleTickerProviderStateM
     showDialog(
       context: context,
       builder: (ctx) {
-        // ADICIONADO: StatefulBuilder para atualizar o Dropdown visualmente
         return StatefulBuilder(
           builder: (context, setModalState) {
             return AlertDialog(
-              title: Text(isEditing ? "Editar Produto: ${produtoParaEditar!.nome}" : "Novo Produto"),
+              title: Text(isEditing ? "Editar: ${produtoParaEditar!.nome}" : "Novo Produto"),
               content: SingleChildScrollView(
                 child: Form(
                   key: _formKey,
@@ -347,7 +421,7 @@ class _LojaScreenState extends State<LojaScreen> with SingleTickerProviderStateM
                         controller: valorController,
                         decoration: const InputDecoration(labelText: 'Preço (R\$)*'),
                         keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        validator: (v) => (double.tryParse(v!.replaceAll(',', '.')) ?? 0) < 0 ? 'Preço inválido' : null,
+                        validator: (v) => (double.tryParse(v!.replaceAll(',', '.')) ?? 0) < 0 ? 'Inválido' : null,
                       ),
                       TextFormField(
                         controller: minController,
@@ -360,16 +434,8 @@ class _LojaScreenState extends State<LojaScreen> with SingleTickerProviderStateM
                         items: ['UNIDADE', 'CAIXA', 'FRASCO', 'ML']
                             .map((u) => DropdownMenuItem(value: u, child: Text(u)))
                             .toList(),
-                        onChanged: (v) {
-                           // Usa setModalState para atualizar a tela do modal
-                           setModalState(() => unidadeSelecionada = v!);
-                        },
+                        onChanged: (v) => setModalState(() => unidadeSelecionada = v!),
                       ),
-                      if (isEditing) 
-                          Padding(
-                            padding: const EdgeInsets.only(top: 10),
-                            child: Text("Estoque Atual: ${produtoParaEditar!.estoque}", style: const TextStyle(fontWeight: FontWeight.bold)),
-                          ),
                     ],
                   ),
                 ),
@@ -390,13 +456,13 @@ class _LojaScreenState extends State<LojaScreen> with SingleTickerProviderStateM
                         );
                         
                         Navigator.pop(ctx);
-                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(isEditing ? "Produto atualizado!" : "Produto criado!")));
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(isEditing ? "Atualizado!" : "Criado!")));
                       } catch (e) {
                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erro: $e"), backgroundColor: Colors.red));
                       }
                     }
                   },
-                  child: Text(isEditing ? "Salvar Alterações" : "Criar Produto"),
+                  child: Text(isEditing ? "Salvar" : "Criar"),
                 )
               ],
             );
@@ -404,4 +470,5 @@ class _LojaScreenState extends State<LojaScreen> with SingleTickerProviderStateM
         );
       },
     );
-  }}
+  }
+}

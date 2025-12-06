@@ -12,6 +12,8 @@ dependencies:
   flutter_local_notifications: ^17.0.0
   timezone: ^0.9.2 # Para lidar com datas/agendamento
   shared_preferences: ^2.2.2 # Para salvar a preferência do usuário
+  pdf: ^3.11.1      # Para criar o layout do documento
+  printing: ^5.13.1 # Para mandar para a impressora
 
   # Pacotes
   http: ^1.1.0

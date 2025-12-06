@@ -15,6 +15,7 @@ import 'paciente_service.dart';
 import 'gestao_service.dart'; 
 import 'categorias_screen.dart';
 import 'auth_service.dart';
+import 'recibo_service.dart'; // <--- GARANTA QUE ESTE ARQUIVO EXISTE
 
 class FinanceiroScreen extends StatefulWidget {
   const FinanceiroScreen({Key? key}) : super(key: key);
@@ -56,7 +57,7 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
   void _carregarDados() {
     setState(() => _isLoading = true);
     Provider.of<FinanceiroService>(context, listen: false)
-        .getTransacoes() // Certifique-se que seu service chama a rota correta
+        .getTransacoes()
         .then((lista) {
           if (mounted) {
             setState(() {
@@ -125,7 +126,6 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
     final financeiroService = Provider.of<FinanceiroService>(context);
     final authService = Provider.of<AuthService>(context);
     
-    // REGRA DE PERMISSÃO: Admin/Gestor pode lançar sem caixa aberto
     final bool podeMovimentar = financeiroService.isCaixaAberto || authService.isAdmin || authService.isGestor;
 
     final listaFiltrada = _aplicarFiltros();
@@ -174,7 +174,7 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
         ),
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: podeMovimentar ? () => _showAddEditTransacaoDialog() : null, // Alterado para chamar o novo método
+        onPressed: podeMovimentar ? () => _showAddEditTransacaoDialog() : null,
         backgroundColor: podeMovimentar ? Colors.teal : Colors.grey,
         icon: const Icon(Icons.add),
         label: const Text("NOVO LANÇAMENTO"),
@@ -202,7 +202,6 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
         title: Text(trans.descricao, style: TextStyle(decoration: isPago ? TextDecoration.lineThrough : null, color: isPago ? Colors.grey : Colors.black)),
         subtitle: Text('${trans.categoriaNome} • Venc: ${DateFormat('dd/MM').format(trans.dataVencimento)}'),
         
-        // --- CORREÇÃO: Adicionado Menu de Opções no Trailing ---
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -214,6 +213,15 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
                 Text(isPago ? "PAGO" : "ABERTO", style: TextStyle(fontSize: 10, color: isPago ? Colors.green : Colors.orange)),
               ],
             ),
+            
+            // --- NOVO: BOTÃO DE IMPRIMIR ---
+            IconButton(
+              icon: const Icon(Icons.print, color: Colors.blueGrey),
+              tooltip: "Imprimir Comprovante",
+              onPressed: () => _mostrarOpcoesImpressao(trans),
+            ),
+            // --------------------------------
+
             PopupMenuButton<String>(
               onSelected: (value) {
                 if (value == 'editar') {
@@ -234,12 +242,50 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
     );
   }
 
-  // ... (buildPainelCaixa, buildFiltros, buildFilterChip, buildResumoFiltro, itemResumo, resumoItem MANTIDOS IGUAIS) ...
-  // Para economizar espaço na resposta, assumi que você manteve esses métodos visuais iguais.
-  // Vou replicar apenas os essenciais abaixo para garantir a compilação:
+  // --- NOVO: MÉTODO PARA ESCOLHER TIPO DE IMPRESSÃO ---
+  void _mostrarOpcoesImpressao(TransacaoFinanceira trans) {
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) {
+        return Container(
+          padding: const EdgeInsets.all(20),
+          height: 180,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text("Imprimir Comprovante:", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12)),
+                    icon: const Icon(Icons.receipt_long),
+                    label: const Text("Térmica (Cupom)"),
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      ReciboService.imprimirRecibo(transacao: trans, isTermica: true);
+                    },
+                  ),
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12)),
+                    icon: const Icon(Icons.description),
+                    label: const Text("A4 (Padrão)"),
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      ReciboService.imprimirRecibo(transacao: trans, isTermica: false);
+                    },
+                  ),
+                ],
+              )
+            ],
+          ),
+        );
+      },
+    );
+  }
 
   Widget _buildPainelCaixa(FinanceiroService service) {
-      // (Código original mantido)
       final caixa = service.caixaAtual;
       final aberto = service.isCaixaAberto;
       double saldoAtual = 0;
@@ -263,7 +309,6 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
   }
 
   Widget _buildFiltros() {
-    // (Mantido igual ao seu arquivo original)
     final formatData = DateFormat('dd/MM/yyyy');
     String textoData = _filtroPeriodo == null ? "Todo o Período" : "${formatData.format(_filtroPeriodo!.start)} até ${formatData.format(_filtroPeriodo!.end)}";
     return Card(margin: const EdgeInsets.symmetric(horizontal: 16), child: ExpansionTile(title: Text("Filtros: $textoData"), children: [
@@ -272,13 +317,25 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
                 final picked = await showDateRangePicker(context: context, firstDate: DateTime(2020), lastDate: DateTime(2030), initialDateRange: _filtroPeriodo);
                 if (picked != null) setState(() => _filtroPeriodo = picked);
             }),
-            // ... Resto dos filtros (Tipo/Status) mantidos
+             Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
+               _buildFilterChip('TODOS', _filtroTipo, (v) => setState(() => _filtroTipo = v)),
+               _buildFilterChip('RECEITA', _filtroTipo, (v) => setState(() => _filtroTipo = v)),
+               _buildFilterChip('DESPESA', _filtroTipo, (v) => setState(() => _filtroTipo = v)),
+             ]),
+             Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
+               _buildFilterChip('TODOS', _filtroStatus, (v) => setState(() => _filtroStatus = v)),
+               _buildFilterChip('PAGO', _filtroStatus, (v) => setState(() => _filtroStatus = v)),
+               _buildFilterChip('ABERTO', _filtroStatus, (v) => setState(() => _filtroStatus = v)),
+             ]),
         ]))
     ]));
   }
   
+  Widget _buildFilterChip(String label, String current, Function(String) onSelect) {
+    return FilterChip(label: Text(label), selected: current == label, onSelected: (_) => onSelect(label));
+  }
+
   Widget _buildResumoFiltro(List<TransacaoFinanceira> lista) {
-    // (Mantido)
     double r=0, d=0; for(var t in lista) { if(t.tipo=='RECEITA') r+=t.valor; else d+=t.valor; }
     return Container(margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), padding: const EdgeInsets.all(12), color: Colors.grey[200], child: Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [_itemResumo("R", r, color: Colors.green), _itemResumo("D", d, color: Colors.red), _itemResumo("S", r-d, color: Colors.blue)]));
   }
@@ -286,7 +343,6 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
   Widget _itemResumo(String l, double v, {Color color=Colors.black}) => Column(children:[Text(l), Text(_currencyFormat.format(v), style: TextStyle(color: color, fontWeight: FontWeight.bold))]);
 
 
-  // --- DIALOGS DE CAIXA (Mantidos) ---
   void _showAbrirCaixaDialog() {
     final c = TextEditingController(text: '0,00');
     showDialog(context: context, builder: (ctx) => AlertDialog(title: const Text("Abrir Caixa"), content: TextField(controller: c, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: "Saldo Inicial")), actions: [TextButton(onPressed: ()=>Navigator.pop(ctx), child: const Text("Cancelar")), ElevatedButton(onPressed: () async {
@@ -300,7 +356,6 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
      }, child: const Text("FECHAR"))]));
   }
 
-  // --- CONFIRMAR EXCLUSÃO (NOVO) ---
   void _confirmarExclusao(int id) {
     showDialog(
       context: context,
@@ -313,7 +368,6 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () async {
               try {
-                // Certifique-se que o FinanceiroService tem o método excluirTransacao ou remove
                 await Provider.of<FinanceiroService>(context, listen: false).excluirTransacao(id);
                 Navigator.pop(ctx);
                 _carregarDados();
@@ -339,7 +393,6 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
       showDialog(context: context, builder: (ctx) => AlertDialog(title: const Text("Confirmar Pagamento"), content: Text("Confirmar ${transacao.descricao}?"), actions: [TextButton(onPressed: ()=>Navigator.pop(ctx), child: const Text("Não")), ElevatedButton(onPressed: () async { await Provider.of<FinanceiroService>(context, listen: false).marcarComoPaga(transacao.id); Navigator.pop(ctx); _carregarDados(); }, child: const Text("Sim"))]));
   }
 
-  // --- DIALOG UNIFICADO (ADICIONAR/EDITAR) ---
   Future<void> _showAddEditTransacaoDialog({TransacaoFinanceira? transacaoParaEditar}) async {
     final isEditing = transacaoParaEditar != null;
     final _formKey = GlobalKey<FormState>();
@@ -366,9 +419,7 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
         if (isEditing) {
           try {
              _catSelecionada = _categorias.firstWhere((c) => c.nome == transacaoParaEditar.categoriaNome); 
-          } catch (e) {
-             // Categoria não encontrada
-          }
+          } catch (e) {}
         }
     } catch (_) {}
 
@@ -388,7 +439,6 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
                     key: _formKey,
                     child: Column(mainAxisSize: MainAxisSize.min, children: [
                         Row(children: [
-                          // --- CORREÇÃO AQUI: Adicionado <String> ---
                           Expanded(child: RadioListTile<String>(
                             title: const Text("Despesa"), 
                             value: 'DESPESA', 
@@ -401,7 +451,6 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
                             groupValue: _tipoSelecionado, 
                             onChanged: isEditing ? null : (v) => setModalState(() => _tipoSelecionado = v!)
                           ))
-                          // ------------------------------------------
                         ]),
                         TextFormField(controller: _descController, decoration: const InputDecoration(labelText: 'Descrição*'), validator: (v) => v!.isEmpty ? 'Obrigatório' : null,),
                         TextFormField(controller: _valorController, decoration: const InputDecoration(labelText: 'Valor (R\$)*'), keyboardType: const TextInputType.numberWithOptions(decimal: true), validator: (v) => (double.tryParse(v?.replaceAll(',', '.') ?? '0') ?? 0) <= 0 ? 'Inválido' : null,),
@@ -451,17 +500,12 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
                         final valor = double.parse(_valorController.text.replaceAll(',', '.'));
                         
                         if (isEditing) {
-                          // --- MODO EDITAR (CORRIGIDO) ---
                           await service.editarTransacao(
                             id: transacaoParaEditar!.id,
                             descricao: _descController.text,
                             valor: valor,
                             tipo: _tipoSelecionado,
-                            
-                            // ANTES ESTAVA: categoria: _catSelecionada!.nome
-                            // AGORA DEVE SER:
                             categoriaId: _catSelecionada!.id, 
-                            
                             formaPagamento: 'DINHEIRO', 
                           );
                         } else {
@@ -478,7 +522,7 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
                         }
                         
                         Navigator.pop(context);
-                        _carregarDados(); // Recarrega a tela
+                        _carregarDados(); 
                       } catch (e) { 
                         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red)); 
                       }
@@ -491,7 +535,7 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
       },
     );
   }
-  // ... (Resto do código: exportarRelatorio, showConfigNotificacao mantidos iguais) ...
+
   Future<void> _exportarRelatorio() async {
     if (kIsWeb) return;
     final DateTimeRange? picked = await showDateRangePicker(context: context, firstDate: DateTime(2020), lastDate: DateTime(2100), initialDateRange: _filtroPeriodo ?? DateTimeRange(start: DateTime.now().subtract(const Duration(days: 30)), end: DateTime.now()));
